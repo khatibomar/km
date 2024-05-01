@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"flag"
+	"fmt"
+	"go/format"
 	"os"
 
 	"github.com/BurntSushi/toml"
@@ -13,6 +16,36 @@ var (
 	configPath = flag.String("config", "km.toml", "mapping configuration file")
 	debug      = flag.Bool("debug", false, "enable debug logging")
 )
+
+func init() {
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+}
+
+func main() {
+	flag.Usage = Usage
+	flag.Parse()
+
+	if *debug {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	}
+
+	var config Config
+	_, err := toml.DecodeFile(*configPath, &config)
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
+
+	_, err = Run(config)
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
+}
 
 type Config struct {
 	Mappings []struct {
@@ -38,36 +71,34 @@ func Usage() {
 	flag.PrintDefaults()
 }
 
-func init() {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+func Run(cfg Config) ([]byte, error) {
+	g := Generator{}
+
+	g.generate()
+
+	return g.format(), nil
 }
 
-func main() {
-	flag.Usage = Usage
-	flag.Parse()
+type Generator struct {
+	buf bytes.Buffer
+}
 
-	if *debug {
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	}
+func (g *Generator) Printf(format string, args ...any) {
+	fmt.Fprintf(&g.buf, format, args...)
+}
 
-	var config Config
-	_, err := toml.DecodeFile(*configPath, &config)
+func (g *Generator) format() []byte {
+	src, err := format.Source(g.buf.Bytes())
 	if err != nil {
-		log.Fatal().
-			Err(err).
-			Send()
+		// Should never happen, but can arise when developing this code.
+		// The user can compile the output to see the error.
+		log.Warn().
+			Msg(fmt.Sprintf("internal error: invalid Go generated: %s", err))
+		log.Warn().
+			Msg("compile the package to analyze the error")
+		return g.buf.Bytes()
 	}
-
-	_, err = Run()
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Send()
-	}
+	return src
 }
 
-func Run() (output []byte, err error) {
-	return
-}
+func (g *Generator) generate() {}
