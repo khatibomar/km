@@ -41,8 +41,7 @@ func TestGetFields(t *testing.T) {
 }
 
 func TestGenerate(t *testing.T) {
-	t.Run("both structs are in same package", func(t *testing.T) {
-		srcCode := `
+	srcCode := `
 			package p
 
 			type P struct {
@@ -50,7 +49,7 @@ func TestGenerate(t *testing.T) {
 				B	string
 			}
 		`
-		destCode := `
+	destCode := `
 			package p
 
 			type K struct {
@@ -59,14 +58,15 @@ func TestGenerate(t *testing.T) {
 			}
 		`
 
-		srcFset := token.NewFileSet()
-		srcNode, err := parser.ParseFile(srcFset, "main.go", srcCode, 0)
-		assert.Equal(t, nil, err)
+	srcFset := token.NewFileSet()
+	srcNode, err := parser.ParseFile(srcFset, "main.go", srcCode, 0)
+	assert.Equal(t, nil, err)
 
-		destFset := token.NewFileSet()
-		dstNode, err := parser.ParseFile(destFset, "main.go", destCode, 0)
-		assert.Equal(t, nil, err)
+	destFset := token.NewFileSet()
+	dstNode, err := parser.ParseFile(destFset, "main.go", destCode, 0)
+	assert.Equal(t, nil, err)
 
+	t.Run("both structs are in same package", func(t *testing.T) {
 		g := Generator{}
 
 		source := SourceData{
@@ -94,6 +94,36 @@ func TestGenerate(t *testing.T) {
 		expected, err := format.Source([]byte(output))
 		assert.ErrorIs(t, err, nil)
 
-		assert.Equal(t, expected, g.format())
+		assert.Equal(t, string(expected), string(g.format()))
+	})
+
+	t.Run("both structs are in different package", func(t *testing.T) {
+		g := Generator{}
+
+		source := SourceData{
+			node: srcNode,
+			path: "/p",
+			name: "P",
+			pkg:  "p",
+		}
+
+		destination := DestinationData{
+			node: dstNode,
+			path: "/test/k",
+			name: "K",
+			pkg:  "k",
+		}
+
+		output := `func (dest *P) FromK(src k.K) {
+			dest.B = src.B
+		}`
+
+		err = g.generate(source, destination)
+		assert.ErrorIs(t, err, nil)
+
+		expected, err := format.Source([]byte(output))
+		assert.ErrorIs(t, err, nil)
+
+		assert.Equal(t, string(expected), string(g.format()))
 	})
 }
