@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"go/ast"
 	"go/format"
+	"go/parser"
+	"go/token"
 	"os"
 
 	"github.com/BurntSushi/toml"
@@ -102,3 +105,39 @@ func (g *Generator) format() []byte {
 }
 
 func (g *Generator) generate() {}
+
+func loadAstFromFile(path string) (*ast.File, error) {
+	fset := token.NewFileSet()
+	return parser.ParseFile(fset, path, nil, 0)
+}
+
+func getFields(node *ast.File, targetStructName string) (string, []Field) {
+	pkg := node.Name.String()
+	var fields []Field
+
+	ast.Inspect(node, func(n ast.Node) bool {
+		if typeSpec, ok := n.(*ast.TypeSpec); ok {
+			if typeSpec.Name.String() == targetStructName {
+				if structType, ok := typeSpec.Type.(*ast.StructType); ok {
+					for _, f := range structType.Fields.List {
+						for _, n := range f.Names {
+							fields = append(fields, Field{
+								Name: n.Name,
+								Type: fmt.Sprintf("%s", f.Type),
+							})
+						}
+					}
+				}
+				return false
+			}
+		}
+		return true
+	})
+
+	return pkg, fields
+}
+
+type Field struct {
+	Name string
+	Type string
+}
