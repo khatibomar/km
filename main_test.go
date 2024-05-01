@@ -4,7 +4,6 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
-	"log"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -96,8 +95,5 @@ func TestGenerate(t *testing.T) {
 		assert.ErrorIs(t, err, nil)
 
 		assert.Equal(t, expected, g.format())
-
-		log.Print(string(g.format()))
-		log.Print(string(expected))
 	})
 }
