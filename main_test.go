@@ -41,85 +41,143 @@ func TestGetFields(t *testing.T) {
 }
 
 func TestGenerate(t *testing.T) {
-	srcCode := `
-			package p
+	type testInput struct {
+		srcCode        string
+		destCode       string
+		sourcePath     string
+		destPath       string
+		srcName        string
+		destName       string
+		expectedOutput string
+	}
 
-			type P struct {
-				a	int
-				B	string
-			}
-		`
-	destCode := `
-			package p
+	runTest := func(t *testing.T, input testInput) {
+		srcFset := token.NewFileSet()
+		srcNode, err := parser.ParseFile(srcFset, "main.go", input.srcCode, 0)
+		assert.NoError(t, err)
 
-			type K struct {
-				a	int
-				B	string
-			}
-		`
+		destFset := token.NewFileSet()
+		dstNode, err := parser.ParseFile(destFset, "main.go", input.destCode, 0)
+		assert.NoError(t, err)
 
-	srcFset := token.NewFileSet()
-	srcNode, err := parser.ParseFile(srcFset, "main.go", srcCode, 0)
-	assert.Equal(t, nil, err)
-
-	destFset := token.NewFileSet()
-	dstNode, err := parser.ParseFile(destFset, "main.go", destCode, 0)
-	assert.Equal(t, nil, err)
-
-	t.Run("both structs are in same package", func(t *testing.T) {
 		g := Generator{}
 
 		source := SourceData{
 			node: srcNode,
-			path: "/p.go",
-			name: "P",
+			path: input.sourcePath,
+			name: input.srcName,
 		}
 
 		destination := DestinationData{
 			node: dstNode,
-			path: "/k.go",
-			name: "K",
+			path: input.destPath,
+			name: input.destName,
 		}
 
-		output := `func (dest *P) FromK(src K) {
+		err = g.generate(source, destination)
+		assert.NoError(t, err)
+
+		expectedFormatted, err := format.Source([]byte(input.expectedOutput))
+		assert.NoError(t, err)
+
+		assert.Equal(t, string(expectedFormatted), string(g.format()))
+	}
+
+	t.Run("both structs are in same package different files", func(t *testing.T) {
+		srcCode := `
+			package p
+
+			type P struct {
+				a int
+				B string
+			}
+		`
+		destCode := `
+			package p
+
+			type K struct {
+				a int
+				B string
+			}
+		`
+
+		expectedOutput := `func (dest *P) FromK(src K) {
 			dest.a = src.a
 			dest.B = src.B
 		}`
 
-		err = g.generate(source, destination)
-		assert.ErrorIs(t, err, nil)
-
-		expected, err := format.Source([]byte(output))
-		assert.ErrorIs(t, err, nil)
-
-		assert.Equal(t, string(expected), string(g.format()))
+		runTest(t, testInput{
+			srcCode:        srcCode,
+			destCode:       destCode,
+			sourcePath:     "/p.go",
+			destPath:       "/k.go",
+			srcName:        "P",
+			destName:       "K",
+			expectedOutput: expectedOutput,
+		})
 	})
 
-	t.Run("both structs are in different package", func(t *testing.T) {
-		g := Generator{}
+	t.Run("both structs are in same package same file", func(t *testing.T) {
+		srcCode := `
+			package p
 
-		source := SourceData{
-			node: srcNode,
-			path: "/p.go",
-			name: "P",
-		}
+			type P struct {
+				a int
+				B string
+			}
 
-		destination := DestinationData{
-			node: dstNode,
-			path: "/test/k.go",
-			name: "K",
-		}
+			type K struct {
+				a int
+				B string
+			}
+		`
 
-		output := `func (dest *P) FromK(src p.K) {
+		expectedOutput := `func (dest *P) FromK(src K) {
+			dest.a = src.a
 			dest.B = src.B
 		}`
 
-		err = g.generate(source, destination)
-		assert.ErrorIs(t, err, nil)
+		runTest(t, testInput{
+			srcCode:        srcCode,
+			destCode:       srcCode,
+			sourcePath:     "/p.go",
+			destPath:       "/p.go",
+			srcName:        "P",
+			destName:       "K",
+			expectedOutput: expectedOutput,
+		})
+	})
 
-		expected, err := format.Source([]byte(output))
-		assert.ErrorIs(t, err, nil)
+	t.Run("both structs are in different packages", func(t *testing.T) {
+		srcCode := `
+			package p
 
-		assert.Equal(t, string(expected), string(g.format()))
+			type P struct {
+				a int
+				B string
+			}
+		`
+		destCode := `
+			package k
+
+			type K struct {
+				a int
+				B string
+			}
+		`
+
+		expectedOutput := `func (dest *P) FromK(src k.K) {
+			dest.B = src.B
+		}`
+
+		runTest(t, testInput{
+			srcCode:        srcCode,
+			destCode:       destCode,
+			sourcePath:     "/p.go",
+			destPath:       "/test/k.go",
+			srcName:        "P",
+			destName:       "K",
+			expectedOutput: expectedOutput,
+		})
 	})
 }
