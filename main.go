@@ -1,10 +1,15 @@
 package main
 
 import (
+	"flag"
 	"os"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+)
+
+var (
+	debug = flag.Bool("debug", false, "enable debug logging")
 )
 
 func init() {
@@ -14,5 +19,11 @@ func init() {
 }
 
 func main() {
-	log.Info().Msg("Initial")
+	flag.Parse()
+
+	if *debug {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	}
+
+	log.Print("Initial")
 }
