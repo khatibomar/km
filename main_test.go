@@ -71,16 +71,14 @@ func TestGenerate(t *testing.T) {
 
 		source := SourceData{
 			node: srcNode,
-			path: "/p",
+			path: "/p.go",
 			name: "P",
-			pkg:  "p",
 		}
 
 		destination := DestinationData{
 			node: dstNode,
-			path: "/p",
+			path: "/p.go",
 			name: "K",
-			pkg:  "p",
 		}
 
 		output := `func (dest *P) FromK(src K) {
@@ -102,19 +100,17 @@ func TestGenerate(t *testing.T) {
 
 		source := SourceData{
 			node: srcNode,
-			path: "/p",
+			path: "/p.go",
 			name: "P",
-			pkg:  "p",
 		}
 
 		destination := DestinationData{
 			node: dstNode,
-			path: "/test/k",
+			path: "/test/k.go",
 			name: "K",
-			pkg:  "k",
 		}
 
-		output := `func (dest *P) FromK(src k.K) {
+		output := `func (dest *P) FromK(src p.K) {
 			dest.B = src.B
 		}`
 

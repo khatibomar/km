@@ -99,14 +99,12 @@ func Run(cfg Config) ([]File, error) {
 				name: m.Source.Name,
 				node: sourceNode,
 				path: m.Source.Path,
-				pkg:  getPackage(sourceNode),
 			}
 
 			destination := DestinationData{
 				name:       m.Destination.Name,
 				node:       destinationNode,
 				path:       m.Destination.Path,
-				pkg:        getPackage(destinationNode),
 				ignoredMap: ignoredMap,
 				fieldsMap:  m.Destination.FieldsMap,
 			}
@@ -162,7 +160,7 @@ func (g *Generator) generate(source SourceData, destination DestinationData) err
 	if samePkg {
 		destinationName = destination.name
 	} else {
-		destinationName = fmt.Sprintf("%s.%s", destination.pkg, destination.name)
+		destinationName = fmt.Sprintf("%s.%s", getPackage(destination.node), destination.name)
 	}
 
 	g.Printf("func (dest *%s) From%s(src %s) {", source.name, destination.name, destinationName)
@@ -239,7 +237,6 @@ type SourceData struct {
 	node *ast.File
 	path string
 	name string
-	pkg  string
 }
 
 type DestinationData struct {
@@ -248,5 +245,4 @@ type DestinationData struct {
 	name       string
 	ignoredMap map[string]struct{}
 	fieldsMap  map[string]string
-	pkg        string
 }
