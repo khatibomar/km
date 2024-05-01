@@ -77,7 +77,7 @@ func TestGenerate(t *testing.T) {
 
 		destination := DestinationData{
 			node: dstNode,
-			path: "/p.go",
+			path: "/k.go",
 			name: "K",
 		}
 
