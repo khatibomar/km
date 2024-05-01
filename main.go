@@ -12,6 +12,11 @@ var (
 	debug = flag.Bool("debug", false, "enable debug logging")
 )
 
+func Usage() {
+	log.Info().Msg("\nUsage of km:\nFlags:")
+	flag.PrintDefaults()
+}
+
 func init() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
@@ -19,11 +24,12 @@ func init() {
 }
 
 func main() {
+	flag.Usage = Usage
 	flag.Parse()
 
 	if *debug {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 
-	log.Print("Initial")
+	Usage()
 }
