@@ -149,29 +149,34 @@ func (g *Generator) format() []byte {
 
 func (g *Generator) generate(source SourceData, destination DestinationData) error {
 	sourceFields := getFields(source.node, source.name)
+	sourceFieldsLookup := make(map[string]Field)
+	for _, f := range sourceFields {
+		sourceFieldsLookup[f.Name] = f
+	}
 	destinationFields := getFields(destination.node, destination.name)
 
 	var destinationName string
 
 	samePkg := filepath.Dir(source.path) == filepath.Dir(destination.path)
 
-	if !samePkg {
-		destinationName = fmt.Sprintf("%s.%s", destination.pkg, destination.name)
-	} else {
+	if samePkg {
 		destinationName = destination.name
+	} else {
+		destinationName = fmt.Sprintf("%s.%s", destination.pkg, destination.name)
 	}
 
 	g.Printf("func (dest *%s) From%s(src %s) {", source.name, destination.name, destinationName)
 
 	for _, destinationField := range destinationFields {
 		_, ignored := destination.ignoredMap[destinationField.Name]
-		if ignored || (unicode.IsLower(rune(destinationField.Name[0])) && !samePkg) {
+		isExported := unicode.IsUpper(rune(destinationField.Name[0]))
+		if ignored || (!isExported && !samePkg) {
 			continue
 		}
 
-		sourceField, ok := sourceFields[destinationField.Name]
+		sourceField, ok := sourceFieldsLookup[destinationField.Name]
 		if !ok {
-			sourceField, ok = sourceFields[destination.fieldsMap[destinationField.Name]]
+			sourceField, ok = sourceFieldsLookup[destination.fieldsMap[destinationField.Name]]
 		}
 		if ok {
 			// NOTE(khatibomar): I should support convertion between convertible types
@@ -195,8 +200,8 @@ func getPackage(node *ast.File) string {
 	return node.Name.String()
 }
 
-func getFields(node *ast.File, targetStructName string) map[string]Field {
-	fields := make(map[string]Field)
+func getFields(node *ast.File, targetStructName string) []Field {
+	var fields []Field
 
 	ast.Inspect(node, func(n ast.Node) bool {
 		if typeSpec, ok := n.(*ast.TypeSpec); ok {
@@ -204,10 +209,10 @@ func getFields(node *ast.File, targetStructName string) map[string]Field {
 				if structType, ok := typeSpec.Type.(*ast.StructType); ok {
 					for _, f := range structType.Fields.List {
 						for _, n := range f.Names {
-							fields[n.Name] = Field{
+							fields = append(fields, Field{
 								Name: n.Name,
 								Type: fmt.Sprintf("%s", f.Type),
-							}
+							})
 						}
 					}
 				}
