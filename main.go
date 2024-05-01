@@ -13,7 +13,8 @@ var (
 )
 
 func Usage() {
-	log.Info().Msg("\nUsage of km:\nFlags:")
+	log.Info().
+		Msg("\nUsage of km:\nFlags:")
 	flag.PrintDefaults()
 }
 
@@ -31,5 +32,14 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 
-	Usage()
+	_, err := Run()
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
+}
+
+func Run() (output []byte, err error) {
+	return
 }
