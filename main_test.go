@@ -32,9 +32,9 @@ func TestGetFields(t *testing.T) {
 	assert.Equal(t, "p", pkgName, "")
 	assert.Len(t, fields, 2)
 
-	assert.Equal(t, fields[0].Name, "a")
-	assert.Equal(t, fields[0].Type, "int")
+	assert.Equal(t, fields["a"].Name, "a")
+	assert.Equal(t, fields["a"].Type, "int")
 
-	assert.Equal(t, fields[1].Name, "B")
-	assert.Equal(t, fields[1].Type, "string")
+	assert.Equal(t, fields["B"].Name, "B")
+	assert.Equal(t, fields["B"].Type, "string")
 }

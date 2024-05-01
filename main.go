@@ -111,9 +111,9 @@ func loadAstFromFile(path string) (*ast.File, error) {
 	return parser.ParseFile(fset, path, nil, 0)
 }
 
-func getFields(node *ast.File, targetStructName string) (string, []Field) {
+func getFields(node *ast.File, targetStructName string) (string, map[string]Field) {
 	pkg := node.Name.String()
-	var fields []Field
+	fields := make(map[string]Field)
 
 	ast.Inspect(node, func(n ast.Node) bool {
 		if typeSpec, ok := n.(*ast.TypeSpec); ok {
@@ -121,10 +121,10 @@ func getFields(node *ast.File, targetStructName string) (string, []Field) {
 				if structType, ok := typeSpec.Type.(*ast.StructType); ok {
 					for _, f := range structType.Fields.List {
 						for _, n := range f.Names {
-							fields = append(fields, Field{
+							fields[n.Name] = Field{
 								Name: n.Name,
 								Type: fmt.Sprintf("%s", f.Type),
-							})
+							}
 						}
 					}
 				}
