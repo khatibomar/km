@@ -9,6 +9,9 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path"
+	"path/filepath"
+	"unicode"
 
 	"github.com/BurntSushi/toml"
 	"github.com/rs/zerolog"
@@ -42,30 +45,16 @@ func main() {
 			Send()
 	}
 
-	_, err = Run(config)
+	result, err := Run(config)
 	if err != nil {
 		log.Fatal().
 			Err(err).
 			Send()
 	}
-}
 
-type Config struct {
-	Mappings []struct {
-		Settings struct {
-			Override bool `toml:"override"`
-		} `toml:"settings"`
-		Source struct {
-			Name string `toml:"name"`
-			Path string `toml:"path"`
-		} `toml:"source"`
-		Destination struct {
-			Name          string            `toml:"name"`
-			Path          string            `toml:"path"`
-			IgnoredFields []string          `toml:"ignore"`
-			FieldsMap     map[string]string `toml:"map"`
-		} `toml:"destination"`
-	} `toml:"mappings"`
+	for _, r := range result {
+		log.Print(string(r.Buf))
+	}
 }
 
 func Usage() {
@@ -74,12 +63,66 @@ func Usage() {
 	flag.PrintDefaults()
 }
 
-func Run(cfg Config) ([]byte, error) {
-	g := Generator{}
+func Run(cfg Config) ([]File, error) {
+	cfgDir := filepath.Dir(*configPath)
+	groupedMappings := make(map[string][]Mapping)
+	for _, m := range cfg.Mappings {
+		destinationPath := filepath.Dir(m.Destination.Path)
+		groupedMappings[destinationPath] = append(groupedMappings[destinationPath], m)
+	}
 
-	g.generate()
+	var result []File
 
-	return g.format(), nil
+	for key, mapping := range groupedMappings {
+		g := Generator{}
+
+		for i, m := range mapping {
+			sourceNode, err := loadAstFromFile(path.Join(cfgDir, m.Source.Path))
+			if err != nil {
+				return result, err
+			}
+			destinationNode, err := loadAstFromFile(path.Join(cfgDir, m.Destination.Path))
+			if err != nil {
+				return result, err
+			}
+
+			if i == 0 {
+				g.Printf("package %s\n", getPackage(destinationNode))
+			}
+
+			ignoredMap := make(map[string]struct{})
+			for _, ignoreField := range m.Destination.IgnoredFields {
+				ignoredMap[ignoreField] = struct{}{}
+			}
+
+			source := SourceData{
+				name: m.Source.Name,
+				node: sourceNode,
+				path: m.Source.Path,
+				pkg:  getPackage(sourceNode),
+			}
+
+			destination := DestinationData{
+				name:       m.Destination.Name,
+				node:       destinationNode,
+				path:       m.Destination.Path,
+				pkg:        getPackage(destinationNode),
+				ignoredMap: ignoredMap,
+				fieldsMap:  m.Destination.FieldsMap,
+			}
+
+			if err := g.generate(source, destination); err != nil {
+				return result, err
+			}
+		}
+
+		result = append(result, File{
+			Path: key,
+			Buf:  g.format(),
+		})
+	}
+
+	return result, nil
 }
 
 type Generator struct {
@@ -104,15 +147,55 @@ func (g *Generator) format() []byte {
 	return src
 }
 
-func (g *Generator) generate() {}
+func (g *Generator) generate(source SourceData, destination DestinationData) error {
+	sourceFields := getFields(source.node, source.name)
+	destinationFields := getFields(destination.node, destination.name)
+
+	var destinationName string
+
+	samePkg := filepath.Dir(source.path) == filepath.Dir(destination.path)
+
+	if !samePkg {
+		destinationName = fmt.Sprintf("%s.%s", destination.pkg, destination.name)
+	} else {
+		destinationName = destination.name
+	}
+
+	g.Printf("func (dest *%s) From%s(src %s) {", source.name, destination.name, destinationName)
+
+	for _, destinationField := range destinationFields {
+		_, ignored := destination.ignoredMap[destinationField.Name]
+		if ignored || (unicode.IsLower(rune(destinationField.Name[0])) && !samePkg) {
+			continue
+		}
+
+		sourceField, ok := sourceFields[destinationField.Name]
+		if !ok {
+			sourceField, ok = sourceFields[destination.fieldsMap[destinationField.Name]]
+		}
+		if ok {
+			// NOTE(khatibomar): I should support convertion between convertible types
+			if sourceField.Type == destinationField.Type {
+				g.Printf("dest.%s = src.%s\n", sourceField.Name, destinationField.Name)
+			}
+		}
+	}
+
+	g.Printf("}")
+
+	return nil
+}
 
 func loadAstFromFile(path string) (*ast.File, error) {
 	fset := token.NewFileSet()
 	return parser.ParseFile(fset, path, nil, 0)
 }
 
-func getFields(node *ast.File, targetStructName string) (string, map[string]Field) {
-	pkg := node.Name.String()
+func getPackage(node *ast.File) string {
+	return node.Name.String()
+}
+
+func getFields(node *ast.File, targetStructName string) map[string]Field {
 	fields := make(map[string]Field)
 
 	ast.Inspect(node, func(n ast.Node) bool {
@@ -134,10 +217,31 @@ func getFields(node *ast.File, targetStructName string) (string, map[string]Fiel
 		return true
 	})
 
-	return pkg, fields
+	return fields
 }
 
 type Field struct {
 	Name string
 	Type string
+}
+
+type File struct {
+	Path string
+	Buf  []byte
+}
+
+type SourceData struct {
+	node *ast.File
+	path string
+	name string
+	pkg  string
+}
+
+type DestinationData struct {
+	node       *ast.File
+	path       string
+	name       string
+	ignoredMap map[string]struct{}
+	fieldsMap  map[string]string
+	pkg        string
 }
