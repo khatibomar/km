@@ -10,7 +10,7 @@
             "request": "launch",
             "mode": "auto",
             "program": "${fileDirname}",
-            "args": ["-debug"]
+            "args": ["-debug", "-config", "./testdata/km.toml"]
         }
     ]
 }

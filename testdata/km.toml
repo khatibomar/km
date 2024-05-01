@@ -1,0 +1,26 @@
+[[mappings]]
+  [mappings.settings]
+  override=true
+
+  [mappings.source]
+  name = "A"
+  path = "./pkg1/a.go"
+
+  [mappings.destination]
+  name = "B"
+  path = "./pkg1/b.go"
+  ignore = ["Field2"]
+
+[[mappings]]
+  [mappings.source]
+  name = "C"
+  path = "./pkg2/c.go"
+
+  [mappings.destination]
+  name = "D"
+  path = "./pkg2/d.go"
+  ignore = ["Field1", "Field2"]
+
+  [mappings.destination.map]
+  FieldThree = "Field3"
+  FieldFour = "Field4"

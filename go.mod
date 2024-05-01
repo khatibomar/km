@@ -2,7 +2,10 @@ module github.com/khatibomar/km
 
 go 1.22.2
 
-require github.com/rs/zerolog v1.32.0
+require (
+	github.com/BurntSushi/toml v1.3.2
+	github.com/rs/zerolog v1.32.0
+)
 
 require (
 	github.com/mattn/go-colorable v0.1.13 // indirect

@@ -4,13 +4,33 @@ import (
 	"flag"
 	"os"
 
+	"github.com/BurntSushi/toml"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 var (
-	debug = flag.Bool("debug", false, "enable debug logging")
+	configPath = flag.String("config", "km.toml", "mapping configuration file")
+	debug      = flag.Bool("debug", false, "enable debug logging")
 )
+
+type Config struct {
+	Mappings []struct {
+		Settings struct {
+			Override bool `toml:"override"`
+		} `toml:"settings"`
+		Source struct {
+			Name string `toml:"name"`
+			Path string `toml:"path"`
+		} `toml:"source"`
+		Destination struct {
+			Name          string            `toml:"name"`
+			Path          string            `toml:"path"`
+			IgnoredFields []string          `toml:"ignore"`
+			FieldsMap     map[string]string `toml:"map"`
+		} `toml:"destination"`
+	} `toml:"mappings"`
+}
 
 func Usage() {
 	log.Info().
@@ -32,7 +52,15 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 
-	_, err := Run()
+	var config Config
+	_, err := toml.DecodeFile(*configPath, &config)
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
+
+	_, err = Run()
 	if err != nil {
 		log.Fatal().
 			Err(err).
