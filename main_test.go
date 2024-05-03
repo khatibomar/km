@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -27,7 +28,8 @@ func TestGetFields(t *testing.T) {
 	node, err := parser.ParseFile(fset, "main.go", src, 0)
 	assert.Equal(t, nil, err)
 
-	fields := getFields(node, "P")
+	fields, err := getFields(node, "P")
+	assert.NoError(t, err)
 	pkgName := getPackage(node)
 
 	assert.Equal(t, "p", pkgName, "")
@@ -42,13 +44,14 @@ func TestGetFields(t *testing.T) {
 
 func TestGenerate(t *testing.T) {
 	type testInput struct {
-		srcCode        string
-		destCode       string
-		sourcePath     string
-		destPath       string
-		srcName        string
-		destName       string
-		expectedOutput string
+		srcCode               string
+		destCode              string
+		sourcePath            string
+		destPath              string
+		srcName               string
+		destName              string
+		expectedOutput        string
+		expectedGenerateError error
 	}
 
 	runTest := func(t *testing.T, input testInput) {
@@ -75,7 +78,11 @@ func TestGenerate(t *testing.T) {
 		}
 
 		err = g.generate(source, destination)
-		assert.NoError(t, err)
+		if input.expectedGenerateError == nil {
+			assert.NoError(t, err)
+		} else {
+			assert.Equal(t, input.expectedGenerateError, errors.Unwrap(err))
+		}
 
 		expectedFormatted, err := format.Source([]byte(input.expectedOutput))
 		assert.NoError(t, err)
@@ -107,13 +114,14 @@ func TestGenerate(t *testing.T) {
 		}`
 
 		runTest(t, testInput{
-			srcCode:        srcCode,
-			destCode:       destCode,
-			sourcePath:     "/p.go",
-			destPath:       "/k.go",
-			srcName:        "P",
-			destName:       "K",
-			expectedOutput: expectedOutput,
+			srcCode:               srcCode,
+			destCode:              destCode,
+			sourcePath:            "/p.go",
+			destPath:              "/k.go",
+			srcName:               "P",
+			destName:              "K",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
 		})
 	})
 
@@ -138,13 +146,14 @@ func TestGenerate(t *testing.T) {
 		}`
 
 		runTest(t, testInput{
-			srcCode:        srcCode,
-			destCode:       srcCode,
-			sourcePath:     "/p.go",
-			destPath:       "/p.go",
-			srcName:        "P",
-			destName:       "K",
-			expectedOutput: expectedOutput,
+			srcCode:               srcCode,
+			destCode:              srcCode,
+			sourcePath:            "/p.go",
+			destPath:              "/p.go",
+			srcName:               "P",
+			destName:              "K",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
 		})
 	})
 
@@ -171,13 +180,46 @@ func TestGenerate(t *testing.T) {
 		}`
 
 		runTest(t, testInput{
-			srcCode:        srcCode,
-			destCode:       destCode,
-			sourcePath:     "/p.go",
-			destPath:       "/test/k.go",
-			srcName:        "P",
-			destName:       "K",
-			expectedOutput: expectedOutput,
+			srcCode:               srcCode,
+			destCode:              destCode,
+			sourcePath:            "/p.go",
+			destPath:              "/test/k.go",
+			srcName:               "P",
+			destName:              "K",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
+		})
+	})
+
+	t.Run("struct in configuration doesn't exist", func(t *testing.T) {
+		srcCode := `
+			package p
+
+			type P struct {
+				a int
+				B string
+			}
+		`
+		destCode := `
+			package k
+
+			type S struct {
+				a int
+				B string
+			}
+		`
+
+		expectedOutput := ``
+
+		runTest(t, testInput{
+			srcCode:               srcCode,
+			destCode:              destCode,
+			sourcePath:            "/p.go",
+			destPath:              "/test/k.go",
+			srcName:               "P",
+			destName:              "K",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: errTypeNotFound,
 		})
 	})
 }

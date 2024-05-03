@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -19,8 +20,9 @@ import (
 )
 
 var (
-	configPath = flag.String("config", "km.toml", "mapping configuration file")
-	debug      = flag.Bool("debug", false, "enable debug logging")
+	configPath      = flag.String("config", "km.toml", "mapping configuration file")
+	debug           = flag.Bool("debug", false, "enable debug logging")
+	errTypeNotFound = errors.New("specified type not found")
 )
 
 func init() {
@@ -146,12 +148,19 @@ func (g *Generator) format() []byte {
 }
 
 func (g *Generator) generate(source SourceData, destination DestinationData) error {
-	sourceFields := getFields(source.node, source.name)
+	sourceFields, err := getFields(source.node, source.name)
+	if err != nil {
+		return err
+	}
+	destinationFields, err := getFields(destination.node, destination.name)
+	if err != nil {
+		return err
+	}
+
 	sourceFieldsLookup := make(map[string]Field)
 	for _, f := range sourceFields {
 		sourceFieldsLookup[f.Name] = f
 	}
-	destinationFields := getFields(destination.node, destination.name)
 
 	var destinationName string
 
@@ -198,12 +207,15 @@ func getPackage(node *ast.File) string {
 	return node.Name.String()
 }
 
-func getFields(node *ast.File, targetStructName string) []Field {
+func getFields(node *ast.File, typeName string) ([]Field, error) {
 	var fields []Field
+	var found bool
+	var err error
 
 	ast.Inspect(node, func(n ast.Node) bool {
 		if typeSpec, ok := n.(*ast.TypeSpec); ok {
-			if typeSpec.Name.String() == targetStructName {
+			if typeSpec.Name.String() == typeName {
+				found = true
 				if structType, ok := typeSpec.Type.(*ast.StructType); ok {
 					for _, f := range structType.Fields.List {
 						for _, n := range f.Names {
@@ -220,7 +232,11 @@ func getFields(node *ast.File, targetStructName string) []Field {
 		return true
 	})
 
-	return fields
+	if !found {
+		err = fmt.Errorf("type(%s) : %w", typeName, errTypeNotFound)
+	}
+
+	return fields, err
 }
 
 type Field struct {
