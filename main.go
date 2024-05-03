@@ -188,7 +188,7 @@ func (g *Generator) generate(source SourceData, destination DestinationData) err
 		if ok {
 			// NOTE(khatibomar): I should support convertion between convertible types
 			if sourceField.Type == destinationField.Type {
-				g.Printf("dest.%s = src.%s\n", sourceField.Name, destinationField.Name)
+				g.Printf("dest.%s = src.%s\n", destinationField.Name, sourceField.Name)
 			}
 		}
 	}

@@ -53,6 +53,7 @@ func TestGenerate(t *testing.T) {
 		expectedOutput        string
 		expectedGenerateError error
 		ignoredFields         []string
+		fieldsMap             map[string]string
 	}
 
 	runTest := func(t *testing.T, input testInput) {
@@ -83,6 +84,7 @@ func TestGenerate(t *testing.T) {
 			path:       input.destPath,
 			name:       input.destName,
 			ignoredMap: ignoredMap,
+			fieldsMap:  input.fieldsMap,
 		}
 
 		err = g.generate(source, destination)
@@ -227,7 +229,7 @@ func TestGenerate(t *testing.T) {
 		})
 	})
 
-	t.Run("mapping with ignore fields", func(t *testing.T) {
+	t.Run("ignore fields", func(t *testing.T) {
 		srcCode := `
 			package p
 
@@ -256,6 +258,41 @@ func TestGenerate(t *testing.T) {
 			expectedOutput:        expectedOutput,
 			expectedGenerateError: nil,
 			ignoredFields:         []string{"B"},
+		})
+	})
+
+	t.Run("mapping fields", func(t *testing.T) {
+		srcCode := `
+			package p
+
+			type P struct {
+				a int
+				B string
+			}
+
+			type K struct {
+				a int
+				C string
+			}
+		`
+
+		expectedOutput := `func (dest *P) FromK(src K) {
+			dest.a = src.a
+			dest.C = src.B
+		}`
+
+		runTest(t, testInput{
+			srcCode:               srcCode,
+			destCode:              srcCode,
+			sourcePath:            "/p.go",
+			destPath:              "/p.go",
+			srcName:               "P",
+			destName:              "K",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
+			fieldsMap: map[string]string{
+				"C": "B",
+			},
 		})
 	})
 }
