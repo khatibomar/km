@@ -35,61 +35,37 @@ func main() {
 	flag.Usage = Usage
 	flag.Parse()
 
+	cfgDir := filepath.Dir(*configPath)
+
 	if *debug {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 
-	var config Config
-	_, err := toml.DecodeFile(*configPath, &config)
+	var cfg Config
+	_, err := toml.DecodeFile(*configPath, &cfg)
 	if err != nil {
 		log.Fatal().
 			Err(err).
 			Send()
 	}
 
-	result, err := Run(config)
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Send()
-	}
+	groupedMappings := groupMappings(cfg.Mappings)
 
-	for _, r := range result {
-		log.Print(string(r.Buf))
-	}
-}
+	var w []work
 
-func Usage() {
-	log.Info().
-		Msg("\nUsage of km:\nFlags:")
-	flag.PrintDefaults()
-}
-
-func Run(cfg Config) ([]File, error) {
-	cfgDir := filepath.Dir(*configPath)
-	groupedMappings := make(map[string][]Mapping)
-	for _, m := range cfg.Mappings {
-		destinationPath := filepath.Dir(m.Destination.Path)
-		groupedMappings[destinationPath] = append(groupedMappings[destinationPath], m)
-	}
-
-	var result []File
-
-	for key, mapping := range groupedMappings {
-		g := Generator{}
-
-		for i, m := range mapping {
+	for _, mapping := range groupedMappings {
+		for _, m := range mapping {
 			sourceNode, err := loadAstFromFile(path.Join(cfgDir, m.Source.Path))
 			if err != nil {
-				return result, err
+				log.Fatal().
+					Err(err).
+					Send()
 			}
 			destinationNode, err := loadAstFromFile(path.Join(cfgDir, m.Destination.Path))
 			if err != nil {
-				return result, err
-			}
-
-			if i == 0 {
-				g.Printf("package %s\n", getPackage(destinationNode))
+				log.Fatal().
+					Err(err).
+					Send()
 			}
 
 			ignoredMap := make(map[string]struct{})
@@ -111,18 +87,63 @@ func Run(cfg Config) ([]File, error) {
 				fieldsMap:  m.Destination.FieldsMap,
 			}
 
-			if err := g.generate(source, destination); err != nil {
-				return result, err
-			}
+			w = append(w, work{
+				Source:      source,
+				Destination: destination,
+			})
+		}
+	}
+
+	result, err := Process(w)
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
+
+	for _, r := range result {
+		log.Print(string(r.Buf))
+	}
+}
+
+func Usage() {
+	log.Info().
+		Msg("\nUsage of km:\nFlags:")
+	flag.PrintDefaults()
+}
+
+func Process(work []work) ([]File, error) {
+	var result []File
+
+	for i, w := range work {
+
+		g := Generator{}
+
+		if i == 0 {
+			g.Printf("package %s\n", getPackage(w.Destination.node))
+		}
+
+		if err := g.generate(w.Source, w.Destination); err != nil {
+			return result, err
 		}
 
 		result = append(result, File{
-			Path: key,
+			Path: w.Destination.path,
 			Buf:  g.format(),
 		})
 	}
 
 	return result, nil
+}
+
+func groupMappings(mappings []Mapping) map[string][]Mapping {
+	groupedMappings := make(map[string][]Mapping)
+	for _, m := range mappings {
+		destinationPath := filepath.Dir(m.Destination.Path)
+		groupedMappings[destinationPath] = append(groupedMappings[destinationPath], m)
+	}
+
+	return groupedMappings
 }
 
 type Generator struct {
@@ -261,4 +282,9 @@ type DestinationData struct {
 	name       string
 	ignoredMap map[string]struct{}
 	fieldsMap  map[string]string
+}
+
+type work struct {
+	Source      SourceData
+	Destination DestinationData
 }
