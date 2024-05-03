@@ -233,7 +233,7 @@ func getFields(node *ast.File, typeName string) ([]Field, error) {
 	})
 
 	if !found {
-		err = fmt.Errorf("type(%s) : %w", typeName, errTypeNotFound)
+		err = fmt.Errorf("type(%s): %w", typeName, errTypeNotFound)
 	}
 
 	return fields, err

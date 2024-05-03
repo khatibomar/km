@@ -1,7 +1,7 @@
 package main
 
 import (
-	"errors"
+	"fmt"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -78,11 +78,7 @@ func TestGenerate(t *testing.T) {
 		}
 
 		err = g.generate(source, destination)
-		if input.expectedGenerateError == nil {
-			assert.NoError(t, err)
-		} else {
-			assert.Equal(t, input.expectedGenerateError, errors.Unwrap(err))
-		}
+		assert.Equal(t, input.expectedGenerateError, err)
 
 		expectedFormatted, err := format.Source([]byte(input.expectedOutput))
 		assert.NoError(t, err)
@@ -219,7 +215,7 @@ func TestGenerate(t *testing.T) {
 			srcName:               "P",
 			destName:              "K",
 			expectedOutput:        expectedOutput,
-			expectedGenerateError: errTypeNotFound,
+			expectedGenerateError: fmt.Errorf("type(K): %w", errTypeNotFound),
 		})
 	})
 }
