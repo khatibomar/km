@@ -21,7 +21,7 @@ import (
 
 var (
 	configPath      = flag.String("config", "km.toml", "mapping configuration file")
-	debug           = flag.Bool("debug", false, "enable debug logging")
+	debug           = flag.Bool("debug", false, "log result instead of writing to files")
 	errTypeNotFound = errors.New("specified type not found")
 	errNoWork       = errors.New("no work to process")
 )
@@ -109,8 +109,25 @@ func main() {
 		endResult = append(endResult, result)
 	}
 
-	for _, r := range endResult {
-		log.Print(string(r.Buf))
+	for _, f := range endResult {
+		if *debug {
+			log.Print(string(f.Buf), "\n")
+		} else {
+			currDir, err := os.Getwd()
+			if err != nil {
+				log.Warn().
+					Err(err).
+					Send()
+				continue
+			}
+
+			err = os.WriteFile(filepath.Join(currDir, cfgDir, f.Path, "km_gen.go"), f.Buf, 0644)
+			if err != nil {
+				log.Warn().
+					Err(err).
+					Send()
+			}
+		}
 	}
 }
 
@@ -138,7 +155,7 @@ func Process(groupedWork []work) (File, error) {
 	}
 
 	return File{
-		Path: groupedWork[0].Destination.path,
+		Path: filepath.Dir(groupedWork[0].Destination.path),
 		Buf:  g.format(),
 	}, nil
 }
