@@ -115,7 +115,7 @@ func TestGenerate(t *testing.T) {
 			}
 		`
 
-		expectedOutput := `func (dest *P) FromK(src K) {
+		expectedOutput := `func (dest *K) FromP(src P) {
 			dest.a = src.a
 			dest.B = src.B
 		}`
@@ -147,7 +147,7 @@ func TestGenerate(t *testing.T) {
 			}
 		`
 
-		expectedOutput := `func (dest *P) FromK(src K) {
+		expectedOutput := `func (dest *K) FromP(src P) {
 			dest.a = src.a
 			dest.B = src.B
 		}`
@@ -182,7 +182,7 @@ func TestGenerate(t *testing.T) {
 			}
 		`
 
-		expectedOutput := `func (dest *P) FromK(src k.K) {
+		expectedOutput := `func (dest *K) FromP(src p.P) {
 			dest.B = src.B
 		}`
 
@@ -245,7 +245,7 @@ func TestGenerate(t *testing.T) {
 			}
 		`
 
-		expectedOutput := `func (dest *P) FromK(src K) {
+		expectedOutput := `func (dest *K) FromP(src P) {
 			dest.a = src.a
 		}`
 
@@ -277,7 +277,7 @@ func TestGenerate(t *testing.T) {
 			}
 		`
 
-		expectedOutput := `func (dest *P) FromK(src K) {
+		expectedOutput := `func (dest *K) FromP(src P) {
 			dest.a = src.a
 			dest.C = src.B
 		}`
@@ -323,8 +323,4 @@ func TestGroupMappings(t *testing.T) {
 
 	assert.Equal(t, mappings[:2], res[dirD1])
 	assert.Equal(t, mappings[2:], res[dirD2])
-}
-
-func TestProcess(t *testing.T) {
-
 }

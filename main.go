@@ -189,17 +189,17 @@ func (g *Generator) generate(source SourceData, destination DestinationData) err
 		sourceFieldsLookup[f.Name] = f
 	}
 
-	var destinationName string
+	var srcName string
 
 	samePkg := filepath.Dir(source.path) == filepath.Dir(destination.path)
 
 	if samePkg {
-		destinationName = destination.name
+		srcName = source.name
 	} else {
-		destinationName = fmt.Sprintf("%s.%s", getPackage(destination.node), destination.name)
+		srcName = fmt.Sprintf("%s.%s", getPackage(source.node), source.name)
 	}
 
-	g.Printf("func (dest *%s) From%s(src %s) {", source.name, destination.name, destinationName)
+	g.Printf("func (dest *%s) From%s(src %s) {", destination.name, source.name, srcName)
 
 	for _, destinationField := range destinationFields {
 		_, ignored := destination.ignoredMap[destinationField.Name]
