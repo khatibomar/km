@@ -1,5 +1,5 @@
-[![km](https://github.com/khatibomar/km/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/khatibomar/km/actions/workflows/go.yml)
-# km
+[![KM](https://github.com/khatibomar/km/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/khatibomar/km/actions/workflows/go.yml)
+# KM
 
 <img width=250 src="https://github.com/khatibomar/km/assets/35725554/52078fd7-c05c-42b7-b181-c41be575ea82" />
 
