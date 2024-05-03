@@ -23,6 +23,7 @@ var (
 	configPath      = flag.String("config", "km.toml", "mapping configuration file")
 	debug           = flag.Bool("debug", false, "enable debug logging")
 	errTypeNotFound = errors.New("specified type not found")
+	errNoWork       = errors.New("no work to process")
 )
 
 func init() {
@@ -51,9 +52,10 @@ func main() {
 
 	groupedMappings := groupMappings(cfg.Mappings)
 
-	var w []work
+	var batchWork [][]work
 
 	for _, mapping := range groupedMappings {
+		var groupedWork []work
 		for _, m := range mapping {
 			sourceNode, err := loadAstFromFile(path.Join(cfgDir, m.Source.Path))
 			if err != nil {
@@ -87,21 +89,27 @@ func main() {
 				fieldsMap:  m.Destination.FieldsMap,
 			}
 
-			w = append(w, work{
+			groupedWork = append(groupedWork, work{
 				Source:      source,
 				Destination: destination,
 			})
 		}
+		batchWork = append(batchWork, groupedWork)
 	}
 
-	result, err := Process(w)
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Send()
+	var endResult []File
+
+	for _, groupedWork := range batchWork {
+		result, err := Process(groupedWork)
+		if err != nil {
+			log.Fatal().
+				Err(err).
+				Send()
+		}
+		endResult = append(endResult, result)
 	}
 
-	for _, r := range result {
+	for _, r := range endResult {
 		log.Print(string(r.Buf))
 	}
 }
@@ -112,28 +120,26 @@ func Usage() {
 	flag.PrintDefaults()
 }
 
-func Process(work []work) ([]File, error) {
-	var result []File
+func Process(groupedWork []work) (File, error) {
+	var result File
+	g := Generator{}
 
-	for i, w := range work {
+	if len(groupedWork) == 0 {
+		return result, errNoWork
+	}
 
-		g := Generator{}
+	g.Printf("package %s\n", getPackage(groupedWork[0].Destination.node))
 
-		if i == 0 {
-			g.Printf("package %s\n", getPackage(w.Destination.node))
-		}
-
+	for _, w := range groupedWork {
 		if err := g.generate(w.Source, w.Destination); err != nil {
 			return result, err
 		}
-
-		result = append(result, File{
-			Path: w.Destination.path,
-			Buf:  g.format(),
-		})
 	}
 
-	return result, nil
+	return File{
+		Path: groupedWork[0].Destination.path,
+		Buf:  g.format(),
+	}, nil
 }
 
 func groupMappings(mappings []Mapping) map[string][]Mapping {

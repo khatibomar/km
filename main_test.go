@@ -324,3 +324,7 @@ func TestGroupMappings(t *testing.T) {
 	assert.Equal(t, mappings[:2], res[dirD1])
 	assert.Equal(t, mappings[2:], res[dirD2])
 }
+
+func TestProcess(t *testing.T) {
+
+}
