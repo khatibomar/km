@@ -52,6 +52,7 @@ func TestGenerate(t *testing.T) {
 		destName              string
 		expectedOutput        string
 		expectedGenerateError error
+		ignoredFields         []string
 	}
 
 	runTest := func(t *testing.T, input testInput) {
@@ -71,10 +72,17 @@ func TestGenerate(t *testing.T) {
 			name: input.srcName,
 		}
 
+		ignoredMap := make(map[string]struct{})
+
+		for _, i := range input.ignoredFields {
+			ignoredMap[i] = struct{}{}
+		}
+
 		destination := DestinationData{
-			node: dstNode,
-			path: input.destPath,
-			name: input.destName,
+			node:       dstNode,
+			path:       input.destPath,
+			name:       input.destName,
+			ignoredMap: ignoredMap,
 		}
 
 		err = g.generate(source, destination)
@@ -216,6 +224,38 @@ func TestGenerate(t *testing.T) {
 			destName:              "K",
 			expectedOutput:        expectedOutput,
 			expectedGenerateError: fmt.Errorf("type(K): %w", errTypeNotFound),
+		})
+	})
+
+	t.Run("mapping with ignore fields", func(t *testing.T) {
+		srcCode := `
+			package p
+
+			type P struct {
+				a int
+				B string
+			}
+
+			type K struct {
+				a int
+				B string
+			}
+		`
+
+		expectedOutput := `func (dest *P) FromK(src K) {
+			dest.a = src.a
+		}`
+
+		runTest(t, testInput{
+			srcCode:               srcCode,
+			destCode:              srcCode,
+			sourcePath:            "/p.go",
+			destPath:              "/p.go",
+			srcName:               "P",
+			destName:              "K",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
+			ignoredFields:         []string{"B"},
 		})
 	})
 }
