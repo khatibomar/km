@@ -5,6 +5,7 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -295,4 +296,31 @@ func TestGenerate(t *testing.T) {
 			},
 		})
 	})
+}
+
+func TestGroupMappings(t *testing.T) {
+	var mappings []Mapping
+	mappings = append(mappings, Mapping{
+		Destination: Destination{
+			Path: "/dir/d1/file.go",
+		},
+	})
+	mappings = append(mappings, Mapping{
+		Destination: Destination{
+			Path: "/dir/d1/file2.go",
+		},
+	})
+	mappings = append(mappings, Mapping{
+		Destination: Destination{
+			Path: "/dir/d2/file1.go",
+		},
+	})
+	res := groupMappings(mappings)
+	assert.Len(t, res, 2)
+
+	dirD1 := fmt.Sprintf("%c%s%c%s", os.PathSeparator, "dir", os.PathSeparator, "d1")
+	dirD2 := fmt.Sprintf("%c%s%c%s", os.PathSeparator, "dir", os.PathSeparator, "d2")
+
+	assert.Equal(t, mappings[:2], res[dirD1])
+	assert.Equal(t, mappings[2:], res[dirD2])
 }
