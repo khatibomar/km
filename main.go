@@ -134,6 +134,7 @@ func Process(groupedWork []work) (File, error) {
 		if err := g.generate(w.Source, w.Destination); err != nil {
 			return result, err
 		}
+		g.Printf("\n\n")
 	}
 
 	return File{

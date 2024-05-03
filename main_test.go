@@ -324,3 +324,80 @@ func TestGroupMappings(t *testing.T) {
 	assert.Equal(t, mappings[:2], res[dirD1])
 	assert.Equal(t, mappings[2:], res[dirD2])
 }
+
+func TestProcess(t *testing.T) {
+	var groupedWork []work
+
+	generateWorkFromSrcs := func(srcCode, srcTypeName, dstCode, dstTypeName string) work {
+		srcFset := token.NewFileSet()
+		srcNode, err := parser.ParseFile(srcFset, "main.go", srcCode, 0)
+		assert.NoError(t, err)
+
+		destFset := token.NewFileSet()
+		dstNode, err := parser.ParseFile(destFset, "main.go", dstCode, 0)
+		assert.NoError(t, err)
+
+		return work{
+			Source: SourceData{
+				node: srcNode,
+				name: srcTypeName,
+			},
+			Destination: DestinationData{
+				node: dstNode,
+				name: dstTypeName,
+			},
+		}
+	}
+
+	t.Run("No work", func(t *testing.T) {
+		_, err := Process(groupedWork)
+		assert.Equal(t, errNoWork, err)
+	})
+
+	t.Run("valid grouped work", func(t *testing.T) {
+		code1 := `
+			package p
+
+			type S struct {
+				a int
+				B int
+				C int
+			}
+
+			type K struct {
+				a int
+				B int
+			}
+		`
+		w := generateWorkFromSrcs(code1, "K", code1, "S")
+		groupedWork = append(groupedWork, w)
+
+		code2 := `
+			package p
+
+			type T struct {
+				C int
+			}
+		`
+
+		expectedOutput := `package p
+			func (dest *S) FromK(src K) {
+				dest.a = src.a
+				dest.B = src.B
+			}
+
+			func (dest *S) FromT(src T) {
+				dest.C = src.C
+			}`
+
+		formattedExpectedOutput, err := format.Source([]byte(expectedOutput))
+		assert.NoError(t, err)
+
+		w = generateWorkFromSrcs(code2, "T", code1, "S")
+		groupedWork = append(groupedWork, w)
+
+		f, err := Process(groupedWork)
+		assert.NoError(t, err)
+		assert.Equal(t, string(formattedExpectedOutput), string(f.Buf))
+	})
+}
