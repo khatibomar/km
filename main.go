@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sync"
 	"unicode"
 
 	"github.com/BurntSushi/toml"
@@ -40,6 +41,7 @@ func main() {
 	var (
 		cfg         Config
 		batchWork   [][]work
+		wg          sync.WaitGroup
 		workErrChan = make(chan error, *routinesNumber)
 		workChan    = make(chan []work, *routinesNumber)
 	)
@@ -125,11 +127,16 @@ func main() {
 	results := make(chan File, len(batchWork))
 
 	go handleWorkErrors(workErrChan)
-	go worker(workChan, cfg, results, workErrChan)
+	go worker(&wg, workChan, results, workErrChan, cfg)
 
 	for _, groupedWork := range batchWork {
+		wg.Add(1)
 		workChan <- groupedWork
 	}
+
+	close(workChan)
+	wg.Wait()
+	close(results)
 
 	var generatedFiles []string
 
@@ -155,6 +162,8 @@ func main() {
 			generatedFiles = append(generatedFiles, p)
 		}
 	}
+
+	close(workErrChan)
 }
 
 func handleWorkErrors(errChan <-chan error) {
@@ -165,18 +174,21 @@ func handleWorkErrors(errChan <-chan error) {
 	}
 }
 
-func worker(workChan <-chan []work, cfg Config, results chan<- File, errChan chan<- error) {
-	g := Generator{
-		style:          cfg.Settings.Style,
-		module:         cfg.Settings.Module,
-		pathFromModule: cfg.Settings.PathFromModule,
+func worker(wg *sync.WaitGroup, workChan <-chan []work, results chan<- File, errChan chan<- error, cfg Config) {
+	for w := range workChan {
+		defer wg.Done()
+		g := Generator{
+			style:          cfg.Settings.Style,
+			module:         cfg.Settings.Module,
+			pathFromModule: cfg.Settings.PathFromModule,
+		}
+		result, err := g.Process(w)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		results <- result
 	}
-	result, err := g.Process(<-workChan)
-	if err != nil {
-		errChan <- err
-		return
-	}
-	results <- result
 }
 
 func Usage() {
