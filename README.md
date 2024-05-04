@@ -7,7 +7,7 @@
 
 KM (Kanna Mapper) helps you auto-generate mapping between types and supports configuration using a TOML configuration file.
 
-⚠️ It's still in early development so do not use it in production, also I am planning on a better usage experience.
+⚠️ It's still in early development so do not use it in production, also I am planning on a better usage experience so expect breaking changes.
 
 ## Why KM?
 
@@ -195,6 +195,7 @@ func CarDTOFromCar(dest CarDTO, src car.Car) CarDTO {
 ```
 
 ## Upcoming
+- [ ] Refactor code
 - [X] Adding more tests 
 - [ ] Support for map <-> struct
 - [X] Better documentation
