@@ -165,11 +165,20 @@ func (g *Generator) Process(groupedWork []work) (File, error) {
 
 	g.Printf("package %s\n", getPackage(groupedWork[0].Destination.node))
 
-	g.Printf("import (\n")
+	var imports string
+
 	for _, w := range groupedWork {
-		g.Printf("\"%s\"\n", joinLinuxPath(g.module, g.pathFromModule, filepath.Dir(w.Source.path)))
+		samePkg := filepath.Dir(w.Source.path) == filepath.Dir(w.Destination.path)
+		if !samePkg {
+			imports += fmt.Sprintf("\"%s\"\n", joinLinuxPath(g.module, g.pathFromModule, filepath.Dir(w.Source.path)))
+		}
 	}
-	g.Printf(")\n")
+
+	if imports != "" {
+		g.Printf("import (\n")
+		g.Printf(imports)
+		g.Printf(")\n")
+	}
 
 	for _, w := range groupedWork {
 		if err := g.generate(w.Source, w.Destination); err != nil {
