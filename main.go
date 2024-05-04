@@ -50,7 +50,17 @@ func main() {
 			Send()
 	}
 
-	log.Print(cfg)
+	if cfg.Settings.Style == "" {
+		cfg.Settings.Style = "value"
+	} else {
+		style := cfg.Settings.Style
+		switch style {
+		case "standalone", "pointer", "value":
+		default:
+			log.Fatal().
+				Msgf("Invalid style setting: %s", style)
+		}
+	}
 
 	groupedMappings := groupMappings(cfg.Mappings)
 
@@ -223,7 +233,14 @@ func (g *Generator) generate(source SourceData, destination DestinationData) err
 		srcName = fmt.Sprintf("%s.%s", getPackage(source.node), source.name)
 	}
 
-	g.Printf("func (dest *%s) From%s(src %s) {", destination.name, source.name, srcName)
+	switch g.style {
+	case "pointer":
+		g.Printf("func (dest *%s) From%s(src %s) {", destination.name, source.name, srcName)
+	case "value":
+		g.Printf("func (dest %s) From%s(src %s) %s {", destination.name, source.name, srcName, destination.name)
+	case "standalone":
+		g.Printf("func From%s(dest %s, src %s) %s {", source.name, destination.name, srcName, destination.name)
+	}
 
 	for _, destinationField := range destinationFields {
 		_, ignored := destination.ignoredMap[destinationField.Name]
@@ -244,7 +261,12 @@ func (g *Generator) generate(source SourceData, destination DestinationData) err
 		}
 	}
 
-	g.Printf("}")
+	switch g.style {
+	case "pointer":
+		g.Printf("}")
+	case "value", "standalone":
+		g.Printf("return dest }")
+	}
 
 	return nil
 }
