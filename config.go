@@ -30,5 +30,5 @@ type Config struct {
 type GenSetting struct {
 	Style          string `toml:"style"`
 	Module         string `toml:"module"`
-	PathFromModule string `toml:"PathFromModule"`
+	PathFromModule string `toml:"path_from_module"`
 }

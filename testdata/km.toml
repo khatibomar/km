@@ -1,7 +1,7 @@
 [settings]
 style="value"
 module="github.com/khatibomar/km/"
-PathFromModule="testdata"
+path_from_module="testdata"
 
 [[mappings]]
   [mappings.source]
