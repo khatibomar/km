@@ -66,7 +66,9 @@ func TestGenerate(t *testing.T) {
 		dstNode, err := parser.ParseFile(destFset, "main.go", input.destCode, 0)
 		assert.NoError(t, err)
 
-		g := Generator{}
+		g := Generator{
+			style: "value",
+		}
 
 		source := SourceData{
 			node: srcNode,
@@ -115,9 +117,10 @@ func TestGenerate(t *testing.T) {
 			}
 		`
 
-		expectedOutput := `func (dest *K) FromP(src P) {
+		expectedOutput := `func (dest K) FromP(src P) K {
 			dest.a = src.a
 			dest.B = src.B
+			return dest
 		}`
 
 		runTest(t, testInput{
@@ -147,9 +150,10 @@ func TestGenerate(t *testing.T) {
 			}
 		`
 
-		expectedOutput := `func (dest *K) FromP(src P) {
+		expectedOutput := `func (dest K) FromP(src P) K {
 			dest.a = src.a
 			dest.B = src.B
+			return dest
 		}`
 
 		runTest(t, testInput{
@@ -182,8 +186,9 @@ func TestGenerate(t *testing.T) {
 			}
 		`
 
-		expectedOutput := `func (dest *K) FromP(src p.P) {
+		expectedOutput := `func (dest K) FromP(src p.P) K {
 			dest.B = src.B
+			return dest
 		}`
 
 		runTest(t, testInput{
@@ -245,8 +250,9 @@ func TestGenerate(t *testing.T) {
 			}
 		`
 
-		expectedOutput := `func (dest *K) FromP(src P) {
+		expectedOutput := `func (dest K) FromP(src P) K {
 			dest.a = src.a
+			return dest
 		}`
 
 		runTest(t, testInput{
@@ -277,9 +283,10 @@ func TestGenerate(t *testing.T) {
 			}
 		`
 
-		expectedOutput := `func (dest *K) FromP(src P) {
+		expectedOutput := `func (dest K) FromP(src P) K {
 			dest.a = src.a
 			dest.C = src.B
+			return dest
 		}`
 
 		runTest(t, testInput{
@@ -350,7 +357,7 @@ func TestProcess(t *testing.T) {
 	}
 
 	t.Run("No work", func(t *testing.T) {
-		g := Generator{}
+		g := Generator{style: "value"}
 		_, err := g.Process(groupedWork)
 		assert.Equal(t, errNoWork, err)
 	})
@@ -382,13 +389,15 @@ func TestProcess(t *testing.T) {
 		`
 
 		expectedOutput := `package p
-			func (dest *S) FromK(src K) {
+			func (dest S) FromK(src K) S {
 				dest.a = src.a
 				dest.B = src.B
+				return dest
 			}
 
-			func (dest *S) FromT(src T) {
+			func (dest S) FromT(src T) S {
 				dest.C = src.C
+				return dest
 			}`
 
 		formattedExpectedOutput, err := format.Source([]byte(expectedOutput))
@@ -397,7 +406,7 @@ func TestProcess(t *testing.T) {
 		w = generateWorkFromSrcs(code2, "T", code1, "S")
 		groupedWork = append(groupedWork, w)
 
-		g := Generator{}
+		g := Generator{style: "value"}
 		f, err := g.Process(groupedWork)
 		assert.NoError(t, err)
 		assert.Equal(t, string(formattedExpectedOutput), string(f.Buf))
