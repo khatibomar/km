@@ -66,9 +66,7 @@ func TestGenerate(t *testing.T) {
 		dstNode, err := parser.ParseFile(destFset, "main.go", input.destCode, 0)
 		assert.NoError(t, err)
 
-		g := Generator{
-			style: "value",
-		}
+		g := Generator{}
 
 		source := SourceData{
 			node: srcNode,
@@ -357,7 +355,7 @@ func TestProcess(t *testing.T) {
 	}
 
 	t.Run("No work", func(t *testing.T) {
-		g := Generator{style: "value"}
+		g := Generator{}
 		_, err := g.Process(groupedWork)
 		assert.Equal(t, errNoWork, err)
 	})
@@ -406,7 +404,7 @@ func TestProcess(t *testing.T) {
 		w = generateWorkFromSrcs(code2, "T", code1, "S")
 		groupedWork = append(groupedWork, w)
 
-		g := Generator{style: "value"}
+		g := Generator{}
 		f, err := g.Process(groupedWork)
 		assert.NoError(t, err)
 		assert.Equal(t, string(formattedExpectedOutput), string(f.Buf))

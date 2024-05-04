@@ -50,16 +50,12 @@ func main() {
 			Send()
 	}
 
-	if cfg.Settings.Style == "" {
-		cfg.Settings.Style = "value"
-	} else {
-		style := cfg.Settings.Style
-		switch style {
-		case "standalone", "pointer", "value":
-		default:
-			log.Fatal().
-				Msgf("Invalid style setting: %s", style)
-		}
+	style := cfg.Settings.Style
+	switch style {
+	case "standalone", "pointer", "value", "":
+	default:
+		log.Fatal().
+			Msgf("Invalid style setting: %s", style)
 	}
 
 	groupedMappings := groupMappings(cfg.Mappings)
@@ -236,7 +232,7 @@ func (g *Generator) generate(source SourceData, destination DestinationData) err
 	switch g.style {
 	case "pointer":
 		g.Printf("func (dest *%s) From%s(src %s) {", destination.name, source.name, srcName)
-	case "value":
+	case "value", "":
 		g.Printf("func (dest %s) From%s(src %s) %s {", destination.name, source.name, srcName, destination.name)
 	case "standalone":
 		g.Printf("func From%s(dest %s, src %s) %s {", source.name, destination.name, srcName, destination.name)
@@ -264,7 +260,7 @@ func (g *Generator) generate(source SourceData, destination DestinationData) err
 	switch g.style {
 	case "pointer":
 		g.Printf("}")
-	case "value", "standalone":
+	case "value", "standalone", "":
 		g.Printf("return dest }")
 	}
 
