@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sync"
 	"unicode"
 
 	"github.com/BurntSushi/toml"
@@ -22,6 +23,7 @@ import (
 var (
 	configPath      = flag.String("config", "km.toml", "mapping configuration file")
 	debug           = flag.Bool("debug", false, "log result instead of writing to files")
+	routinesNumber  = flag.Int("routines", 1, "number of routines")
 	errTypeNotFound = errors.New("specified type not found")
 	errNoWork       = errors.New("no work to process")
 )
@@ -36,14 +38,28 @@ func main() {
 	flag.Usage = Usage
 	flag.Parse()
 
+	var (
+		cfg         Config
+		batchWork   [][]work
+		wg          sync.WaitGroup
+		workErrChan = make(chan error, *routinesNumber)
+		workChan    = make(chan []work, *routinesNumber)
+	)
+
 	cfgDir := filepath.Dir(*configPath)
+
+	currDir, err := os.Getwd()
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
 
 	if *debug {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 
-	var cfg Config
-	_, err := toml.DecodeFile(*configPath, &cfg)
+	_, err = toml.DecodeFile(*configPath, &cfg)
 	if err != nil {
 		log.Fatal().
 			Err(err).
@@ -64,8 +80,6 @@ func main() {
 	}
 
 	groupedMappings := groupMappings(cfg.Mappings)
-
-	var batchWork [][]work
 
 	for _, mapping := range groupedMappings {
 		var groupedWork []work
@@ -110,43 +124,69 @@ func main() {
 		batchWork = append(batchWork, groupedWork)
 	}
 
-	var endResult []File
+	results := make(chan File, len(batchWork))
 
+	go handleWorkErrors(workErrChan)
+	go worker(&wg, workChan, results, workErrChan, cfg)
+
+	wg.Add(len(batchWork))
 	for _, groupedWork := range batchWork {
+		workChan <- groupedWork
+	}
+
+	close(workChan)
+	close(workErrChan)
+	wg.Wait()
+	close(results)
+
+	var generatedFiles []string
+
+	for f := range results {
+		if *debug {
+			log.Print(string(f.Buf), "\n")
+		} else {
+			p := filepath.Join(currDir, cfgDir, f.Path, "km_gen.go")
+			err = os.WriteFile(p, f.Buf, 0644)
+			if err != nil {
+				for _, p := range generatedFiles {
+					removeErr := os.Remove(p)
+					if removeErr != nil {
+						log.Warn().
+							Err(removeErr).
+							Send()
+					}
+				}
+				log.Fatal().
+					Err(err).
+					Send()
+			}
+			generatedFiles = append(generatedFiles, p)
+		}
+	}
+}
+
+func handleWorkErrors(errChan <-chan error) {
+	for err := range errChan {
+		log.Warn().
+			Err(err).
+			Send()
+	}
+}
+
+func worker(wg *sync.WaitGroup, workChan <-chan []work, results chan<- File, errChan chan<- error, cfg Config) {
+	for w := range workChan {
+		defer wg.Done()
 		g := Generator{
 			style:          cfg.Settings.Style,
 			module:         cfg.Settings.Module,
 			pathFromModule: cfg.Settings.PathFromModule,
 		}
-
-		result, err := g.Process(groupedWork)
+		result, err := g.Process(w)
 		if err != nil {
-			log.Fatal().
-				Err(err).
-				Send()
+			errChan <- err
+			return
 		}
-		endResult = append(endResult, result)
-	}
-
-	for _, f := range endResult {
-		if *debug {
-			log.Print(string(f.Buf), "\n")
-		} else {
-			currDir, err := os.Getwd()
-			if err != nil {
-				log.Warn().
-					Err(err).
-					Send()
-				continue
-			}
-
-			err = os.WriteFile(filepath.Join(currDir, cfgDir, f.Path, "km_gen.go"), f.Buf, 0644)
-			if err != nil {
-				log.Warn().
-					Err(err).
-					Send()
-			}
-		}
+		results <- result
 	}
 }
 

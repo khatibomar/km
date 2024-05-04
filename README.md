@@ -37,6 +37,8 @@ Flags:
         mapping configuration file (default "km.toml")
   -debug
         log result instead of writing to files
+  -routines int
+        number of routines (default 1)
 ```
 
 ## Usage
