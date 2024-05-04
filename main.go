@@ -129,12 +129,13 @@ func main() {
 	go handleWorkErrors(workErrChan)
 	go worker(&wg, workChan, results, workErrChan, cfg)
 
+	wg.Add(len(batchWork))
 	for _, groupedWork := range batchWork {
-		wg.Add(1)
 		workChan <- groupedWork
 	}
 
 	close(workChan)
+	close(workErrChan)
 	wg.Wait()
 	close(results)
 
@@ -162,8 +163,6 @@ func main() {
 			generatedFiles = append(generatedFiles, p)
 		}
 	}
-
-	close(workErrChan)
 }
 
 func handleWorkErrors(errChan <-chan error) {
