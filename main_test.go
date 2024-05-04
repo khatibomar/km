@@ -412,3 +412,87 @@ func TestProcess(t *testing.T) {
 		assert.Equal(t, string(formattedExpectedOutput), string(f.Buf))
 	})
 }
+
+func TestStyles(t *testing.T) {
+	srcCode := `
+		package p
+
+		type S struct{
+			a int
+		}
+
+		type D struct{
+			a int
+		}
+	`
+
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, "main.go", srcCode, 0)
+	assert.NoError(t, err)
+
+	srcData := SourceData{
+		node: node,
+		name: "S",
+	}
+
+	dstData := DestinationData{
+		node: node,
+		name: "D",
+	}
+
+	t.Run("Value style", func(t *testing.T) {
+		g := Generator{
+			style: "value",
+		}
+
+		expectedOutput, err := format.Source(
+			[]byte(`func (dest D) FromS(src S) D {
+				dest.a = src.a
+				return dest
+			}`),
+		)
+		assert.NoError(t, err)
+
+		err = g.generate(srcData, dstData)
+		assert.NoError(t, err)
+
+		assert.Equal(t, string(expectedOutput), string(g.format()))
+	})
+
+	t.Run("Pointer style", func(t *testing.T) {
+		g := Generator{
+			style: "pointer",
+		}
+
+		expectedOutput, err := format.Source(
+			[]byte(`func (dest *D) FromS(src S) {
+				dest.a = src.a
+			}`),
+		)
+		assert.NoError(t, err)
+
+		err = g.generate(srcData, dstData)
+		assert.NoError(t, err)
+
+		assert.Equal(t, string(expectedOutput), string(g.format()))
+	})
+
+	t.Run("Standalone style", func(t *testing.T) {
+		g := Generator{
+			style: "standalone",
+		}
+
+		expectedOutput, err := format.Source(
+			[]byte(`func FromS(dest D, src S) D {
+				dest.a = src.a
+				return dest
+			}`),
+		)
+		assert.NoError(t, err)
+
+		err = g.generate(srcData, dstData)
+		assert.NoError(t, err)
+
+		assert.Equal(t, string(expectedOutput), string(g.format()))
+	})
+}
