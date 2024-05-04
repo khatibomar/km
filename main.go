@@ -58,6 +58,11 @@ func main() {
 			Msgf("Invalid style setting: %s", style)
 	}
 
+	if cfg.Settings.Module == "" {
+		log.Fatal().
+			Msg("module must be specified in config")
+	}
+
 	groupedMappings := groupMappings(cfg.Mappings)
 
 	var batchWork [][]work
@@ -109,7 +114,9 @@ func main() {
 
 	for _, groupedWork := range batchWork {
 		g := Generator{
-			style: cfg.Settings.Style,
+			style:          cfg.Settings.Style,
+			module:         cfg.Settings.Module,
+			pathFromModule: cfg.Settings.PathFromModule,
 		}
 
 		result, err := g.Process(groupedWork)
@@ -158,6 +165,12 @@ func (g *Generator) Process(groupedWork []work) (File, error) {
 
 	g.Printf("package %s\n", getPackage(groupedWork[0].Destination.node))
 
+	g.Printf("import (\n")
+	for _, w := range groupedWork {
+		g.Printf("\"%s\"\n", joinLinuxPath(g.module, g.pathFromModule, filepath.Dir(w.Source.path)))
+	}
+	g.Printf(")\n")
+
 	for _, w := range groupedWork {
 		if err := g.generate(w.Source, w.Destination); err != nil {
 			return result, err
@@ -182,8 +195,10 @@ func groupMappings(mappings []Mapping) map[string][]Mapping {
 }
 
 type Generator struct {
-	buf   bytes.Buffer
-	style string
+	buf            bytes.Buffer
+	style          string
+	module         string
+	pathFromModule string
 }
 
 func (g *Generator) Printf(format string, args ...any) {

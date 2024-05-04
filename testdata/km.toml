@@ -1,29 +1,26 @@
 [settings]
 style="value"
-
-[[mappings]]
-  [mappings.settings]
-  override=true
-
-  [mappings.source]
-  name = "A"
-  path = "./pkg1/a.go"
-
-  [mappings.destination]
-  name = "B"
-  path = "./pkg1/b.go"
-  ignore = ["Field2"]
+module="github.com/khatibomar/km/"
+PathFromModule="testdata"
 
 [[mappings]]
   [mappings.source]
-  name = "C"
-  path = "./pkg2/c.go"
+  name = "Car"
+  path = "./car/car.go"
 
   [mappings.destination]
-  name = "D"
-  path = "./pkg2/d.go"
-  ignore = ["Field1", "Field2"]
+  name = "CarDTO"
+  path = "./dto/car_dto.go"
+  ignore = ["Owner"]
 
   [mappings.destination.map]
-  FieldThree = "Field3"
-  FieldFour = "Field4"
+  FactoryModel = "Model"
+
+[[mappings]]
+  [mappings.source]
+  name = "User"
+  path = "./user/user.go"
+
+  [mappings.destination]
+  name = "UserDTO"
+  path = "./dto/user_dto.go"
