@@ -481,7 +481,7 @@ func TestStyles(t *testing.T) {
 		}
 
 		expectedOutput, err := format.Source(
-			[]byte(`func FromS(dest D, src S) D {
+			[]byte(`func DFromS(dest D, src S) D {
 				dest.a = src.a
 				return dest
 			}`),

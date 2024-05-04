@@ -235,7 +235,7 @@ func (g *Generator) generate(source SourceData, destination DestinationData) err
 	case "value", "":
 		g.Printf("func (dest %s) From%s(src %s) %s {", destination.name, source.name, srcName, destination.name)
 	case "standalone":
-		g.Printf("func From%s(dest %s, src %s) %s {", source.name, destination.name, srcName, destination.name)
+		g.Printf("func %sFrom%s(dest %s, src %s) %s {", destination.name, source.name, destination.name, srcName, destination.name)
 	}
 
 	for _, destinationField := range destinationFields {
