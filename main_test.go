@@ -350,7 +350,8 @@ func TestProcess(t *testing.T) {
 	}
 
 	t.Run("No work", func(t *testing.T) {
-		_, err := Process(groupedWork)
+		g := Generator{}
+		_, err := g.Process(groupedWork)
 		assert.Equal(t, errNoWork, err)
 	})
 
@@ -396,7 +397,8 @@ func TestProcess(t *testing.T) {
 		w = generateWorkFromSrcs(code2, "T", code1, "S")
 		groupedWork = append(groupedWork, w)
 
-		f, err := Process(groupedWork)
+		g := Generator{}
+		f, err := g.Process(groupedWork)
 		assert.NoError(t, err)
 		assert.Equal(t, string(formattedExpectedOutput), string(f.Buf))
 	})

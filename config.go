@@ -23,5 +23,10 @@ type Mapping struct {
 }
 
 type Config struct {
-	Mappings []Mapping `toml:"mappings"`
+	Mappings []Mapping  `toml:"mappings"`
+	Settings GenSetting `toml:"settings"`
+}
+
+type GenSetting struct {
+	Style string `toml:"style"`
 }

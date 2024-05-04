@@ -50,6 +50,8 @@ func main() {
 			Send()
 	}
 
+	log.Print(cfg)
+
 	groupedMappings := groupMappings(cfg.Mappings)
 
 	var batchWork [][]work
@@ -100,7 +102,11 @@ func main() {
 	var endResult []File
 
 	for _, groupedWork := range batchWork {
-		result, err := Process(groupedWork)
+		g := Generator{
+			style: cfg.Settings.Style,
+		}
+
+		result, err := g.Process(groupedWork)
 		if err != nil {
 			log.Fatal().
 				Err(err).
@@ -137,9 +143,8 @@ func Usage() {
 	flag.PrintDefaults()
 }
 
-func Process(groupedWork []work) (File, error) {
+func (g *Generator) Process(groupedWork []work) (File, error) {
 	var result File
-	g := Generator{}
 
 	if len(groupedWork) == 0 {
 		return result, errNoWork
@@ -171,7 +176,8 @@ func groupMappings(mappings []Mapping) map[string][]Mapping {
 }
 
 type Generator struct {
-	buf bytes.Buffer
+	buf   bytes.Buffer
+	style string
 }
 
 func (g *Generator) Printf(format string, args ...any) {

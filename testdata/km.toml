@@ -1,3 +1,6 @@
+[settings]
+style="default"
+
 [[mappings]]
   [mappings.settings]
   override=true
