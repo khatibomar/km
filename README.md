@@ -1,3 +1,4 @@
+<a href="https://pkg.go.dev/github.com/khatibomar/km"><img src="https://pkg.go.dev/badge/github.com/khatibomar/km/km.svg" alt="Go Reference"></a>
 [![KM](https://github.com/khatibomar/km/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/khatibomar/km/actions/workflows/go.yml)
 # KM
 
