@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"unicode"
 
@@ -205,18 +206,18 @@ func (g *Generator) Process(groupedWork []work) (File, error) {
 
 	g.Printf("package %s\n", getPackage(groupedWork[0].Destination.node))
 
-	var imports string
+	var imports []string
 
 	for _, w := range groupedWork {
 		samePkg := filepath.Dir(w.Source.path) == filepath.Dir(w.Destination.path)
 		if !samePkg {
-			imports += fmt.Sprintf("\"%s\"\n", joinLinuxPath(g.module, g.pathFromModule, filepath.Dir(w.Source.path)))
+			imports = append(imports, fmt.Sprintf("\"%s\"\n", joinLinuxPath(g.module, g.pathFromModule, filepath.Dir(w.Source.path))))
 		}
 	}
 
-	if imports != "" {
+	if len(imports) > 0 {
 		g.Printf("import (\n")
-		g.Printf(imports)
+		g.Printf(strings.Join(imports, "\n"))
 		g.Printf(")\n")
 	}
 
