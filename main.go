@@ -316,7 +316,11 @@ func (g *Generator) generate(source SourceData, destination DestinationData) err
 		}
 		if ok {
 			// NOTE(khatibomar): I should support convertion between convertible types
-			if sourceField.Type == destinationField.Type {
+			isImportedFromSource := strings.TrimPrefix(sourceField.Type, fmt.Sprintf("%s.", getPackage(destination.node))) == destinationField.Type &&
+				in(joinLinuxPath(g.module, g.pathFromModule, filepath.Dir(destination.path)), getImports(source.node))
+			isImportedFromDestination := strings.TrimPrefix(destinationField.Type, fmt.Sprintf("%s.", getPackage(source.node))) == sourceField.Type &&
+				in(joinLinuxPath(g.module, g.pathFromModule, filepath.Dir(source.path)), getImports(destination.node))
+			if sourceField.Type == destinationField.Type || isImportedFromSource || isImportedFromDestination {
 				g.Printf("dest.%s = src.%s\n", destinationField.Name, sourceField.Name)
 			}
 		}
@@ -341,6 +345,24 @@ func getPackage(node *ast.File) string {
 	return node.Name.String()
 }
 
+func getImports(node *ast.File) []string {
+	var res []string
+	for _, i := range node.Imports {
+		res = append(res, i.Path.Value[1:len(i.Path.Value)-1])
+	}
+
+	return res
+}
+
+func in(target string, list []string) bool {
+	for _, item := range list {
+		if item == target {
+			return true
+		}
+	}
+	return false
+}
+
 func getFields(node *ast.File, typeName string) ([]Field, error) {
 	var fields []Field
 	var found bool
@@ -355,7 +377,7 @@ func getFields(node *ast.File, typeName string) ([]Field, error) {
 						for _, n := range f.Names {
 							fields = append(fields, Field{
 								Name: n.Name,
-								Type: fmt.Sprintf("%s", f.Type),
+								Type: extractTypeFromExpression(f.Type),
 							})
 						}
 					}
@@ -371,6 +393,38 @@ func getFields(node *ast.File, typeName string) ([]Field, error) {
 	}
 
 	return fields, err
+}
+
+func extractTypeFromExpression(expr ast.Expr) string {
+	switch expr := expr.(type) {
+	case *ast.Ident:
+		return expr.Name
+	case *ast.StarExpr:
+		return "*" + extractTypeFromExpression(expr.X)
+	case *ast.ArrayType:
+		return "[]" + extractTypeFromExpression(expr.Elt)
+	case *ast.MapType:
+		return "map[" + extractTypeFromExpression(expr.Key) + "]" + extractTypeFromExpression(expr.Value)
+	case *ast.StructType:
+		return "struct{}"
+	case *ast.InterfaceType:
+		return "interface{}"
+	case *ast.ChanType:
+		var dir string
+		switch expr.Dir {
+		case ast.SEND:
+			dir = "chan<- "
+		case ast.RECV:
+			dir = "<-chan "
+		default:
+			dir = "chan "
+		}
+		return dir + extractTypeFromExpression(expr.Value)
+	case *ast.SelectorExpr:
+		return extractTypeFromExpression(expr.X) + "." + expr.Sel.Name
+	default:
+		return "unknown"
+	}
 }
 
 type Field struct {

@@ -11,8 +11,39 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestGetImports(t *testing.T) {
+	run := func(src string, expected []string) {
+		fset := token.NewFileSet()
+		node, err := parser.ParseFile(fset, "main.go", src, 0)
+		assert.Equal(t, nil, err)
+		assert.Equal(t, expected, getImports(node))
+	}
+
+	run(`package p
+	import "tt"
+	import "/"`, []string{"tt", "/"})
+}
+
 func TestGetFields(t *testing.T) {
-	src := `
+	run := func(src, typeName, expectedPkg string, expectedFields []Field) {
+		fset := token.NewFileSet()
+		node, err := parser.ParseFile(fset, "main.go", src, 0)
+		assert.Equal(t, nil, err)
+
+		fields, err := getFields(node, typeName)
+		assert.NoError(t, err)
+		pkgName := getPackage(node)
+
+		assert.Equal(t, expectedPkg, pkgName)
+
+		for i, f := range fields {
+			assert.Equal(t, expectedFields[i].Name, f.Name)
+			assert.Equal(t, expectedFields[i].Type, f.Type)
+		}
+	}
+
+	t.Run("simple struct", func(t *testing.T) {
+		src := `
 		package p
 
 		type P struct {
@@ -24,23 +55,15 @@ func TestGetFields(t *testing.T) {
 			a int
 		}
 	`
+		run(src, "P", "p", []Field{
+			{"a", "int"},
+			{"B", "string"},
+		})
 
-	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, "main.go", src, 0)
-	assert.Equal(t, nil, err)
-
-	fields, err := getFields(node, "P")
-	assert.NoError(t, err)
-	pkgName := getPackage(node)
-
-	assert.Equal(t, "p", pkgName, "")
-	assert.Len(t, fields, 2)
-
-	assert.Equal(t, fields[0].Name, "a")
-	assert.Equal(t, fields[0].Type, "int")
-
-	assert.Equal(t, fields[1].Name, "B")
-	assert.Equal(t, fields[1].Type, "string")
+		run(src, "K", "p", []Field{
+			{"a", "int"},
+		})
+	})
 }
 
 func TestGenerate(t *testing.T) {
@@ -299,6 +322,176 @@ func TestGenerate(t *testing.T) {
 			fieldsMap: map[string]string{
 				"C": "B",
 			},
+		})
+	})
+
+	t.Run("complex field in dest refereing src", func(t *testing.T) {
+		srcCode := `
+			package p
+
+			type P struct {
+				a int
+				B string
+				Meta MetaData
+			}
+
+			type MetaData struct{}
+		`
+
+		dstCode := `
+			package l
+
+			import "/bli"
+
+			type L struct {
+				a int
+				B string
+				Meta p.MetaData
+			}
+		`
+
+		expectedOutput := `func (dest L) FromP(src p.P) L {
+			dest.B = src.B
+			dest.Meta = src.Meta
+			return dest
+		}`
+
+		runTest(t, testInput{
+			srcCode:               srcCode,
+			destCode:              dstCode,
+			sourcePath:            "/bli/p.go",
+			destPath:              "/bla/l.go",
+			srcName:               "P",
+			destName:              "L",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
+		})
+	})
+
+	t.Run("complex field in dest but not refereing src", func(t *testing.T) {
+		srcCode := `
+			package p
+
+			type P struct {
+				a int
+				B string
+				Meta MetaData
+			}
+
+			type MetaData struct{}
+		`
+
+		dstCode := `
+			package l
+
+			import p "/x"
+
+			type L struct {
+				a int
+				B string
+				Meta p.MetaData
+			}
+		`
+
+		expectedOutput := `func (dest L) FromP(src p.P) L {
+			dest.B = src.B
+			return dest
+		}`
+
+		runTest(t, testInput{
+			srcCode:               srcCode,
+			destCode:              dstCode,
+			sourcePath:            "/bli/p.go",
+			destPath:              "/bla/l.go",
+			srcName:               "P",
+			destName:              "L",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
+		})
+	})
+
+	t.Run("complex field in src refereing dest", func(t *testing.T) {
+		srcCode := `
+			package p
+
+			import "/bla"
+
+			type P struct {
+				a int
+				B string
+				Meta l.MetaData
+			}
+		`
+
+		dstCode := `
+			package l
+
+			type L struct {
+				a int
+				B string
+				Meta MetaData
+			}
+
+			type MetaData struct{}
+		`
+
+		expectedOutput := `func (dest L) FromP(src p.P) L {
+			dest.B = src.B
+			dest.Meta = src.Meta
+			return dest
+		}`
+
+		runTest(t, testInput{
+			srcCode:               srcCode,
+			destCode:              dstCode,
+			sourcePath:            "/bli/file.go",
+			destPath:              "/bla/file.go",
+			srcName:               "P",
+			destName:              "L",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
+		})
+	})
+
+	t.Run("complex field in src but not refereing dest", func(t *testing.T) {
+		srcCode := `
+			package p
+
+			import "/blo"
+
+			type P struct {
+				a int
+				B string
+				Meta l.MetaData
+			}
+		`
+
+		dstCode := `
+			package l
+
+			type L struct {
+				a int
+				B string
+				Meta MetaData
+			}
+
+			type MetaData struct{}
+		`
+
+		expectedOutput := `func (dest L) FromP(src p.P) L {
+			dest.B = src.B
+			return dest
+		}`
+
+		runTest(t, testInput{
+			srcCode:               srcCode,
+			destCode:              dstCode,
+			sourcePath:            "/bli/file.go",
+			destPath:              "/bla/file.go",
+			srcName:               "P",
+			destName:              "L",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
 		})
 	})
 }

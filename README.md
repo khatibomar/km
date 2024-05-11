@@ -130,6 +130,7 @@ func (dest CarDTO) FromCar(src car.Car) CarDTO {
 func (dest UserDTO) FromUser(src user.User) UserDTO {
 	dest.Name = src.Name
 	dest.Age = src.Age
+  dest.MetaData = src.MetaData
 	return dest
 }
 ```
