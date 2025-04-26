@@ -21,3 +21,5 @@
 go.work
 
 *_gen*
+
+.vscode
