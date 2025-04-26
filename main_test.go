@@ -6,17 +6,28 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"reflect"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestGetImports(t *testing.T) {
 	run := func(src string, expected []string) {
 		fset := token.NewFileSet()
 		node, err := parser.ParseFile(fset, "main.go", src, 0)
-		assert.Equal(t, nil, err)
-		assert.Equal(t, expected, getImports(node))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		got := getImports(node)
+		if len(got) != len(expected) {
+			t.Errorf("Expected imports %v but got %v", expected, got)
+		}
+
+		for i := range got {
+			if got[i] != expected[i] {
+				t.Errorf("Expected import %s but got %s at index %d", expected[i], got[i], i)
+			}
+		}
 	}
 
 	run(`package p
@@ -28,17 +39,28 @@ func TestGetFields(t *testing.T) {
 	run := func(src, typeName, expectedPkg string, expectedFields []Field) {
 		fset := token.NewFileSet()
 		node, err := parser.ParseFile(fset, "main.go", src, 0)
-		assert.Equal(t, nil, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		fields, err := getFields(node, typeName)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		pkgName := getPackage(node)
 
-		assert.Equal(t, expectedPkg, pkgName)
+		if pkgName != expectedPkg {
+			t.Errorf("Expected package %s but got %s", expectedPkg, pkgName)
+		}
 
 		for i, f := range fields {
-			assert.Equal(t, expectedFields[i].Name, f.Name)
-			assert.Equal(t, expectedFields[i].Type, f.Type)
+			if f.Name != expectedFields[i].Name {
+				t.Errorf("Expected field name %s but got %s", expectedFields[i].Name, f.Name)
+			}
+			if f.Type != expectedFields[i].Type {
+				t.Errorf("Expected field type %s but got %s", expectedFields[i].Type, f.Type)
+			}
 		}
 	}
 
@@ -83,11 +105,15 @@ func TestGenerate(t *testing.T) {
 	runTest := func(t *testing.T, input testInput) {
 		srcFset := token.NewFileSet()
 		srcNode, err := parser.ParseFile(srcFset, "main.go", input.srcCode, 0)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		destFset := token.NewFileSet()
 		dstNode, err := parser.ParseFile(destFset, "main.go", input.destCode, 0)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		g := Generator{}
 
@@ -112,12 +138,24 @@ func TestGenerate(t *testing.T) {
 		}
 
 		err = g.generate(source, destination)
-		assert.Equal(t, input.expectedGenerateError, err)
+		if err != input.expectedGenerateError {
+			if err == nil {
+				t.Errorf("Expected error %v but got nil", input.expectedGenerateError)
+			} else if input.expectedGenerateError == nil {
+				t.Errorf("Expected nil error but got %v", err)
+			} else if err.Error() != input.expectedGenerateError.Error() {
+				t.Errorf("Expected error %v but got %v", input.expectedGenerateError, err)
+			}
+		}
 
 		expectedFormatted, err := format.Source([]byte(input.expectedOutput))
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		assert.Equal(t, string(expectedFormatted), string(g.format()))
+		if string(expectedFormatted) != string(g.format()) {
+			t.Errorf("Expected output:\n%s\n\nBut got:\n%s", string(expectedFormatted), string(g.format()))
+		}
 	}
 
 	t.Run("both structs are in same package different files", func(t *testing.T) {
@@ -514,13 +552,31 @@ func TestGroupMappings(t *testing.T) {
 		},
 	})
 	res := groupMappings(mappings)
-	assert.Len(t, res, 2)
+	if len(res) != 2 {
+		t.Errorf("Expected 2 groups but got %d", len(res))
+	}
 
 	dirD1 := fmt.Sprintf("%c%s%c%s", os.PathSeparator, "dir", os.PathSeparator, "d1")
 	dirD2 := fmt.Sprintf("%c%s%c%s", os.PathSeparator, "dir", os.PathSeparator, "d2")
 
-	assert.Equal(t, mappings[:2], res[dirD1])
-	assert.Equal(t, mappings[2:], res[dirD2])
+	if !equalMappingSlice(res[dirD1], mappings[:2]) {
+		t.Errorf("Expected mappings %v but got %v for dir %s", mappings[:2], res[dirD1], dirD1)
+	}
+	if !equalMappingSlice(res[dirD2], mappings[2:]) {
+		t.Errorf("Expected mappings %v but got %v for dir %s", mappings[2:], res[dirD2], dirD2)
+	}
+}
+
+func equalMappingSlice(a, b []Mapping) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !reflect.DeepEqual(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func TestProcess(t *testing.T) {
@@ -529,11 +585,15 @@ func TestProcess(t *testing.T) {
 	generateWorkFromSrcs := func(srcCode, srcTypeName, dstCode, dstTypeName string) work {
 		srcFset := token.NewFileSet()
 		srcNode, err := parser.ParseFile(srcFset, "main.go", srcCode, 0)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		destFset := token.NewFileSet()
 		dstNode, err := parser.ParseFile(destFset, "main.go", dstCode, 0)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		return work{
 			Source: SourceData{
@@ -550,7 +610,9 @@ func TestProcess(t *testing.T) {
 	t.Run("No work", func(t *testing.T) {
 		g := Generator{}
 		_, err := g.Process(groupedWork)
-		assert.Equal(t, errNoWork, err)
+		if err != errNoWork {
+			t.Errorf("Expected error %v but got %v", errNoWork, err)
+		}
 	})
 
 	t.Run("valid grouped work", func(t *testing.T) {
@@ -592,15 +654,22 @@ func TestProcess(t *testing.T) {
 			}`
 
 		formattedExpectedOutput, err := format.Source([]byte(expectedOutput))
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		w = generateWorkFromSrcs(code2, "T", code1, "S")
 		groupedWork = append(groupedWork, w)
 
 		g := Generator{}
 		f, err := g.Process(groupedWork)
-		assert.NoError(t, err)
-		assert.Equal(t, string(formattedExpectedOutput), string(f.Buf))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(formattedExpectedOutput) != string(f.Buf) {
+			t.Errorf("Expected:\n%s\n\nBut got:\n%s", string(formattedExpectedOutput), string(f.Buf))
+		}
 	})
 }
 
@@ -619,7 +688,9 @@ func TestStyles(t *testing.T) {
 
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, "main.go", srcCode, 0)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	srcData := SourceData{
 		node: node,
@@ -642,12 +713,18 @@ func TestStyles(t *testing.T) {
 				return dest
 			}`),
 		)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		err = g.generate(srcData, dstData)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		assert.Equal(t, string(expectedOutput), string(g.format()))
+		if string(expectedOutput) != string(g.format()) {
+			t.Errorf("Expected:\n%s\n\nBut got:\n%s", string(expectedOutput), string(g.format()))
+		}
 	})
 
 	t.Run("Pointer style", func(t *testing.T) {
@@ -660,12 +737,18 @@ func TestStyles(t *testing.T) {
 				dest.a = src.a
 			}`),
 		)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		err = g.generate(srcData, dstData)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		assert.Equal(t, string(expectedOutput), string(g.format()))
+		if string(expectedOutput) != string(g.format()) {
+			t.Errorf("Expected:\n%s\n\nBut got:\n%s", string(expectedOutput), string(g.format()))
+		}
 	})
 
 	t.Run("Standalone style", func(t *testing.T) {
@@ -679,11 +762,17 @@ func TestStyles(t *testing.T) {
 				return dest
 			}`),
 		)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		err = g.generate(srcData, dstData)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		assert.Equal(t, string(expectedOutput), string(g.format()))
+		if string(expectedOutput) != string(g.format()) {
+			t.Errorf("Expected:\n%s\n\nBut got:\n%s", string(expectedOutput), string(g.format()))
+		}
 	})
 }

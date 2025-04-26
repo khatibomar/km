@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
-
-	"github.com/rs/zerolog/log"
 )
 
 type Generator struct {
@@ -94,10 +92,8 @@ func (g *Generator) format() []byte {
 	if err != nil {
 		// Should never happen, but can arise when developing this code.
 		// The user can compile the output to see the error.
-		log.Warn().
-			Msg(fmt.Sprintf("internal error: invalid Go generated: %s", err))
-		log.Warn().
-			Msg("compile the package to analyze the error")
+		defaultLogger.Warning("internal error: invalid go generated: %s", err)
+		defaultLogger.Warning("compile the package to analyze the error")
 		return g.buf.Bytes()
 	}
 	return src
@@ -123,7 +119,7 @@ func (g *Generator) Process(groupedWork []work) (File, error) {
 
 	if len(imports) > 0 {
 		g.Printf("import (\n")
-		g.Printf(strings.Join(imports, "\n"))
+		g.Printf("%s", strings.Join(imports, "\n"))
 		g.Printf(")\n")
 	}
 

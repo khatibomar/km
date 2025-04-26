@@ -10,8 +10,6 @@ import (
 	"sync"
 
 	"github.com/BurntSushi/toml"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -21,12 +19,6 @@ var (
 	errTypeNotFound = errors.New("specified type not found")
 	errNoWork       = errors.New("no work to process")
 )
-
-func init() {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-}
 
 func main() {
 	flag.Usage = Usage
@@ -44,33 +36,23 @@ func main() {
 
 	currDir, err := os.Getwd()
 	if err != nil {
-		log.Fatal().
-			Err(err).
-			Send()
-	}
-
-	if *debug {
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		defaultLogger.Fatal("%v", err)
 	}
 
 	_, err = toml.DecodeFile(*configPath, &cfg)
 	if err != nil {
-		log.Fatal().
-			Err(err).
-			Send()
+		defaultLogger.Fatal("%v", err)
 	}
 
 	style := cfg.Settings.Style
 	switch style {
 	case "standalone", "pointer", "value", "":
 	default:
-		log.Fatal().
-			Msgf("Invalid style setting: %s", style)
+		defaultLogger.Fatal("Invalid style setting: %s", style)
 	}
 
 	if cfg.Settings.Module == "" {
-		log.Fatal().
-			Msg("module must be specified in config")
+		defaultLogger.Fatal("Module must be specified in config")
 	}
 
 	groupedMappings := groupMappings(cfg.Mappings)
@@ -80,15 +62,11 @@ func main() {
 		for _, m := range mapping {
 			sourceNode, err := loadAstFromFile(path.Join(cfgDir, m.Source.Path))
 			if err != nil {
-				log.Fatal().
-					Err(err).
-					Send()
+				defaultLogger.Fatal("Error loading source file: %v", err)
 			}
 			destinationNode, err := loadAstFromFile(path.Join(cfgDir, m.Destination.Path))
 			if err != nil {
-				log.Fatal().
-					Err(err).
-					Send()
+				defaultLogger.Fatal("Error loading destination file: %v", err)
 			}
 
 			ignoredMap := make(map[string]struct{})
@@ -137,7 +115,7 @@ func main() {
 
 	for f := range results {
 		if *debug {
-			log.Print(string(f.Buf), "\n")
+			defaultLogger.Debug("%s", string(f.Buf))
 		} else {
 			p := filepath.Join(currDir, cfgDir, f.Path, "km_gen.go")
 			err = os.WriteFile(p, f.Buf, 0644)
@@ -145,14 +123,10 @@ func main() {
 				for _, p := range generatedFiles {
 					removeErr := os.Remove(p)
 					if removeErr != nil {
-						log.Warn().
-							Err(removeErr).
-							Send()
+						defaultLogger.Warning("%v", removeErr)
 					}
 				}
-				log.Fatal().
-					Err(err).
-					Send()
+				defaultLogger.Fatal("Error writing file: %v", err)
 			}
 			generatedFiles = append(generatedFiles, p)
 		}
@@ -161,9 +135,7 @@ func main() {
 
 func handleWorkErrors(errChan <-chan error) {
 	for err := range errChan {
-		log.Warn().
-			Err(err).
-			Send()
+		defaultLogger.Warning("%v", err)
 	}
 }
 
@@ -185,8 +157,7 @@ func worker(wg *sync.WaitGroup, workChan <-chan []work, results chan<- File, err
 }
 
 func Usage() {
-	log.Info().
-		Msg("\nUsage of km:\nFlags:")
+	defaultLogger.Printf("\nUsage of km:\nFlags:")
 	flag.PrintDefaults()
 }
 
