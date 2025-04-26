@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"go/ast"
 	"go/format"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -51,6 +53,13 @@ func (g *Generator) generate(source SourceData, destination DestinationData) err
 		g.Printf("func %sFrom%s(dest %s, src %s) %s {", destination.name, source.name, destination.name, srcName, destination.name)
 	}
 
+	if isMapType(destination.node, destination.name) {
+		for _, srcField := range sourceFields {
+			g.Printf("dest[\"%s\"] = src.%s\n", srcField.Name, srcField.Name)
+		}
+		goto functionCloser
+	}
+
 	for _, destinationField := range destinationFields {
 		_, ignored := destination.ignoredMap[destinationField.Name]
 		isExported := unicode.IsUpper(rune(destinationField.Name[0]))
@@ -62,18 +71,32 @@ func (g *Generator) generate(source SourceData, destination DestinationData) err
 		if !ok {
 			sourceField, ok = sourceFieldsLookup[destination.fieldsMap[destinationField.Name]]
 		}
+
+		if isMapType(source.node, source.name) {
+			g.Printf("if v, ok := src[\"%s\"].(%s); ok {\n", destinationField.Name, destinationField.Type)
+			g.Printf("dest.%s = v\n", destinationField.Name)
+			g.Printf("}\n")
+			continue
+		}
+
 		if ok {
-			// NOTE(khatibomar): I should support convertion between convertible types
 			isImportedFromSource := strings.TrimPrefix(sourceField.Type, fmt.Sprintf("%s.", getPackage(destination.node))) == destinationField.Type &&
 				in(joinLinuxPath(g.module, g.pathFromModule, filepath.Dir(destination.path)), getImports(source.node))
 			isImportedFromDestination := strings.TrimPrefix(destinationField.Type, fmt.Sprintf("%s.", getPackage(source.node))) == sourceField.Type &&
 				in(joinLinuxPath(g.module, g.pathFromModule, filepath.Dir(source.path)), getImports(destination.node))
+
 			if sourceField.Type == destinationField.Type || isImportedFromSource || isImportedFromDestination {
 				g.Printf("dest.%s = src.%s\n", destinationField.Name, sourceField.Name)
+			} else if areTypesConvertible(sourceField.Type, destinationField.Type) {
+				g.Printf("dest.%s = %s(src.%s)\n",
+					destinationField.Name,
+					destinationField.Type,
+					sourceField.Name)
 			}
 		}
 	}
 
+functionCloser:
 	switch g.style {
 	case "pointer":
 		g.Printf("}")
@@ -140,4 +163,35 @@ func (g *Generator) Process(groupedWork []work) (File, error) {
 		Path: filepath.Dir(groupedWork[0].Destination.path),
 		Buf:  g.format(),
 	}, nil
+}
+
+func isMapType(node *ast.File, typeName string) bool {
+	isMap := false
+	ast.Inspect(node, func(n ast.Node) bool {
+		if typeSpec, ok := n.(*ast.TypeSpec); ok {
+			if typeSpec.Name.Name == typeName {
+				if _, ok := typeSpec.Type.(*ast.MapType); ok {
+					isMap = true
+					return false
+				}
+			}
+		}
+		return true
+	})
+	return isMap
+}
+
+func areTypesConvertible(sourceType, destType string) bool {
+	basicTypes := map[string][]string{
+		"int":     {"int32", "int64", "float64", "string"},
+		"int32":   {"int", "int64", "float64", "string"},
+		"int64":   {"int", "int32", "float64", "string"},
+		"float64": {"int", "int32", "int64", "string"},
+		"string":  {"int", "int32", "int64", "float64"},
+	}
+
+	if convertibleTypes, ok := basicTypes[sourceType]; ok {
+		return slices.Contains(convertibleTypes, destType)
+	}
+	return false
 }

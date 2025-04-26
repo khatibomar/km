@@ -32,10 +32,11 @@ func getFields(node *ast.File, typeName string) ([]Field, error) {
 
 	ast.Inspect(node, func(n ast.Node) bool {
 		if typeSpec, ok := n.(*ast.TypeSpec); ok {
-			if typeSpec.Name.String() == typeName {
+			if typeSpec.Name != nil && typeSpec.Name.String() == typeName {
 				found = true
-				if structType, ok := typeSpec.Type.(*ast.StructType); ok {
-					for _, f := range structType.Fields.List {
+				switch t := typeSpec.Type.(type) {
+				case *ast.StructType:
+					for _, f := range t.Fields.List {
 						for _, n := range f.Names {
 							fields = append(fields, Field{
 								Name: n.Name,
@@ -43,6 +44,15 @@ func getFields(node *ast.File, typeName string) ([]Field, error) {
 							})
 						}
 					}
+				case *ast.MapType:
+					fields = append(fields, Field{
+						Name: "key",
+						Type: extractTypeFromExpression(t.Key),
+					})
+					fields = append(fields, Field{
+						Name: "value",
+						Type: extractTypeFromExpression(t.Value),
+					})
 				}
 				return false
 			}

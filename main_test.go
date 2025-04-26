@@ -39,59 +39,6 @@ func TestGetImports(t *testing.T) {
 	import "/"`, []string{"tt", "/"})
 }
 
-func TestGetFields(t *testing.T) {
-	run := func(src, typeName, expectedPkg string, expectedFields []Field) {
-		fset := token.NewFileSet()
-		node, err := parser.ParseFile(fset, "main.go", src, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		fields, err := getFields(node, typeName)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		pkgName := getPackage(node)
-
-		if pkgName != expectedPkg {
-			t.Errorf("Expected package %s but got %s", expectedPkg, pkgName)
-		}
-
-		for i, f := range fields {
-			if f.Name != expectedFields[i].Name {
-				t.Errorf("Expected field name %s but got %s", expectedFields[i].Name, f.Name)
-			}
-			if f.Type != expectedFields[i].Type {
-				t.Errorf("Expected field type %s but got %s", expectedFields[i].Type, f.Type)
-			}
-		}
-	}
-
-	t.Run("simple struct", func(t *testing.T) {
-		src := `
-		package p
-
-		type P struct {
-			a	int
-			B	string
-		}
-
-		type K struct {
-			a int
-		}
-	`
-		run(src, "P", "p", []Field{
-			{"a", "int"},
-			{"B", "string"},
-		})
-
-		run(src, "K", "p", []Field{
-			{"a", "int"},
-		})
-	})
-}
-
 func TestGenerate(t *testing.T) {
 	type testInput struct {
 		srcCode               string
@@ -675,6 +622,214 @@ func TestProcess(t *testing.T) {
 			t.Errorf("Expected:\n%s\n\nBut got:\n%s", string(formattedExpectedOutput), string(f.Buf))
 		}
 	})
+
+	t.Run("typed map", func(t *testing.T) {
+		code1 := `
+			package p
+
+			type MapType map[string]any
+
+			type StructType struct {
+				Field1 string
+				Field2 int
+			}`
+
+		w := generateWorkFromSrcs(code1, "MapType", code1, "StructType")
+		groupedWork := []work{w}
+
+		expectedOutput := `package p
+			func (dest StructType) FromMapType(src MapType) StructType {
+				if v, ok := src["Field1"].(string); ok {
+					dest.Field1 = v
+				}
+				if v, ok := src["Field2"].(int); ok {
+					dest.Field2 = v
+				}
+				return dest
+			}`
+
+		formattedExpectedOutput, err := format.Source([]byte(expectedOutput))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		g := Generator{}
+		f, err := g.Process(groupedWork)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(formattedExpectedOutput) != string(f.Buf) {
+			t.Errorf("Expected:\n%s\n\nBut got:\n%s", string(formattedExpectedOutput), string(f.Buf))
+		}
+	})
+
+	t.Run("type alias map", func(t *testing.T) {
+		code1 := `
+			package p
+
+			type MapType = map[string]any
+
+			type StructType struct {
+				Field1 string
+				Field2 int
+			}`
+
+		w := generateWorkFromSrcs(code1, "MapType", code1, "StructType")
+		groupedWork := []work{w}
+
+		expectedOutput := `package p
+			func (dest StructType) FromMapType(src MapType) StructType {
+				if v, ok := src["Field1"].(string); ok {
+					dest.Field1 = v
+				}
+				if v, ok := src["Field2"].(int); ok {
+					dest.Field2 = v
+				}
+				return dest
+			}`
+
+		formattedExpectedOutput, err := format.Source([]byte(expectedOutput))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		g := Generator{}
+		f, err := g.Process(groupedWork)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(formattedExpectedOutput) != string(f.Buf) {
+			t.Errorf("Expected:\n%s\n\nBut got:\n%s", string(formattedExpectedOutput), string(f.Buf))
+		}
+	})
+
+	t.Run("struct to typed map", func(t *testing.T) {
+		code1 := `
+			package p
+
+			type MapType map[string]any
+
+			type StructType struct {
+				Field1 string
+				Field2 int
+			}`
+
+		w := generateWorkFromSrcs(code1, "StructType", code1, "MapType")
+		groupedWork := []work{w}
+
+		expectedOutput := `package p
+			func (dest MapType) FromStructType(src StructType) MapType {
+				dest["Field1"] = src.Field1
+				dest["Field2"] = src.Field2
+				return dest
+			}`
+
+		formattedExpectedOutput, err := format.Source([]byte(expectedOutput))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		g := Generator{}
+		f, err := g.Process(groupedWork)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(formattedExpectedOutput) != string(f.Buf) {
+			t.Errorf("Expected:\n%s\n\nBut got:\n%s", string(formattedExpectedOutput), string(f.Buf))
+		}
+	})
+
+	t.Run("struct to type alias map", func(t *testing.T) {
+		code1 := `
+			package p
+
+			type MapType = map[string]any
+
+			type StructType struct {
+				Field1 string
+				Field2 int
+			}`
+
+		w := generateWorkFromSrcs(code1, "StructType", code1, "MapType")
+		groupedWork := []work{w}
+
+		expectedOutput := `package p
+			func (dest MapType) FromStructType(src StructType) MapType {
+				dest["Field1"] = src.Field1
+				dest["Field2"] = src.Field2
+				return dest
+			}`
+
+		formattedExpectedOutput, err := format.Source([]byte(expectedOutput))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		g := Generator{}
+		f, err := g.Process(groupedWork)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(formattedExpectedOutput) != string(f.Buf) {
+			t.Errorf("Expected:\n%s\n\nBut got:\n%s", string(formattedExpectedOutput), string(f.Buf))
+		}
+	})
+
+	// t.Run("recursive complex fields", func(t *testing.T) {
+	// 	code1 := `
+	// 		package p
+
+	// 		type Parent struct {
+	// 			Child ChildType
+	// 			Name string
+	// 		}
+
+	// 		type ChildType struct {
+	// 			Field1 string
+	// 			Field2 int
+	// 		}
+
+	// 		type DestParent struct {
+	// 			Child DestChild
+	// 			Name string
+	// 		}
+
+	// 		type DestChild struct {
+	// 			Field1 string
+	// 			Field2 int
+	// 		}
+	// 	`
+
+	// 	w := generateWorkFromSrcs(code1, "Parent", code1, "DestParent")
+	// 	groupedWork := []work{w}
+
+	// 	expectedOutput := `package p
+	// 		func (dest DestParent) FromParent(src Parent) DestParent {
+	// 			dest.Child.Field1 = src.Child.Field1
+	// 			dest.Child.Field2 = src.Child.Field2
+	// 			dest.Name = src.Name
+	// 			return dest
+	// 		}`
+
+	// 	formattedExpectedOutput, err := format.Source([]byte(expectedOutput))
+	// 	if err != nil {
+	// 		t.Fatal(err)
+	// 	}
+
+	// 	g := Generator{}
+	// 	f, err := g.Process(groupedWork)
+	// 	if err != nil {
+	// 		t.Fatal(err)
+	// 	}
+
+	// 	if string(formattedExpectedOutput) != string(f.Buf) {
+	// 		t.Errorf("Expected:\n%s\n\nBut got:\n%s", string(formattedExpectedOutput), string(f.Buf))
+	// 	}
+	// })
 }
 
 func TestStyles(t *testing.T) {
