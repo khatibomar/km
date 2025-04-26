@@ -1,26 +1,29 @@
 [settings]
-style="value"
-module="github.com/khatibomar/km/"
-path_from_module="testdata"
+style = "value"
+module = "github.com/khatibomar/km/"
+path_from_module = "testdata"
 
 [[mappings]]
-  [mappings.source]
-  name = "Car"
-  path = "./car/car.go"
+[mappings.source]
+name = "Car"
+path = "./car/car.go"
 
-  [mappings.destination]
-  name = "CarDTO"
-  path = "./dto/car_dto.go"
-  ignore = ["Owner"]
+[[mappings.destination]]
+name = "CarDTO"
+path = "./dto/car_dto.go"
+ignore = ["Owner"]
+[mappings.destination.map]
+FactoryModel = "Model"
 
-  [mappings.destination.map]
-  FactoryModel = "Model"
+[[mappings.plugins]]
+to_map = true
+from_map = true
 
 [[mappings]]
-  [mappings.source]
-  name = "User"
-  path = "./user/user.go"
+[mappings.source]
+name = "User"
+path = "./user/user.go"
 
-  [mappings.destination]
-  name = "UserDTO"
-  path = "./dto/user_dto.go"
+[[mappings.destination]]
+name = "UserDTO"
+path = "./dto/user_dto.go"

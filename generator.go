@@ -107,6 +107,66 @@ functionCloser:
 	return nil
 }
 
+func (g *Generator) generateMapForSource(source SourceData, plugin MapPlugin) error {
+	fields, err := getFields(source.node, source.name)
+	if err != nil {
+		return err
+	}
+
+	switch g.style {
+	case "pointer":
+		if plugin == FromMap {
+			g.Printf("func (dest *%s) FromMap(src map[string]any) {", source.name)
+		} else {
+			g.Printf("func (dest *%s) ToMap() map[string]any {", source.name)
+		}
+	case "value", "":
+		if plugin == FromMap {
+			g.Printf("func (dest %s) FromMap(src map[string]any) %s {", source.name, source.name)
+		} else {
+			g.Printf("func (dest %s) ToMap() map[string]any {", source.name)
+		}
+	case "standalone":
+		if plugin == FromMap {
+			g.Printf("func %sFromMap(dest %s, src map[string]any) %s {", source.name, source.name, source.name)
+		} else {
+			g.Printf("func %sToMap(dest %s) map[string]any {", source.name, source.name)
+		}
+	}
+
+	if plugin == ToMap {
+		g.Printf("result := make(map[string]any)\n")
+		for _, field := range fields {
+			if unicode.IsUpper(rune(field.Name[0])) {
+				g.Printf("result[\"%s\"] = dest.%s\n", field.Name, field.Name)
+			}
+		}
+		g.Printf("return result")
+	} else {
+		if isMapType(source.node, source.name) {
+			for _, field := range fields {
+				g.Printf("dest[\"%s\"] = src[\"%s\"]\n", field.Name, field.Name)
+			}
+		} else {
+			for _, field := range fields {
+				if unicode.IsUpper(rune(field.Name[0])) {
+					g.Printf("if v, ok := src[\"%s\"].(%s); ok {\n", field.Name, field.Type)
+					g.Printf("dest.%s = v\n", field.Name)
+					g.Printf("}\n")
+				}
+			}
+		}
+	}
+
+	if g.style == "pointer" {
+		g.Printf("}")
+	} else {
+		g.Printf("return dest }")
+	}
+
+	return nil
+}
+
 func (g *Generator) Printf(format string, args ...any) {
 	fmt.Fprintf(&g.buf, format, args...)
 }
@@ -123,7 +183,7 @@ func (g *Generator) format() []byte {
 	return src
 }
 
-func (g *Generator) Process(groupedWork []work) (File, error) {
+func Process[T workTyper](g *Generator, groupedWork []T) (File, error) {
 	var result File
 
 	if len(groupedWork) == 0 {
@@ -135,14 +195,37 @@ func (g *Generator) Process(groupedWork []work) (File, error) {
 		g.Printf("// Generated at: %s\n", time.Now().Format(time.RFC3339))
 		g.Printf("// KM version: %s\n\n", version)
 	}
-	g.Printf("package %s\n", getPackage(groupedWork[0].Destination.node))
+
+	firstWork := groupedWork[0]
+
+	if srcWork, ok := any(firstWork).(mapWork[SourceData]); ok {
+		g.Printf("package %s\n", getPackage(srcWork.Target.node))
+
+		if err := g.generateMapForSource(srcWork.Target, srcWork.plugin); err != nil {
+			return result, err
+		}
+
+		return File{
+			Path: filepath.Dir(srcWork.Target.path),
+			Buf:  g.format(),
+		}, nil
+	}
+
+	regularWork, ok := any(firstWork).(work)
+	if !ok {
+		return result, fmt.Errorf("unsupported work type")
+	}
+
+	g.Printf("package %s\n", getPackage(regularWork.Destination.node))
 
 	var imports []string
 
 	for _, w := range groupedWork {
-		samePkg := filepath.Dir(w.Source.path) == filepath.Dir(w.Destination.path)
-		if !samePkg {
-			imports = append(imports, fmt.Sprintf("\"%s\"\n", joinLinuxPath(g.module, g.pathFromModule, filepath.Dir(w.Source.path))))
+		if wt, ok := any(w).(work); ok {
+			samePkg := filepath.Dir(wt.Source.path) == filepath.Dir(wt.Destination.path)
+			if !samePkg {
+				imports = append(imports, fmt.Sprintf("\"%s\"\n", joinLinuxPath(g.module, g.pathFromModule, filepath.Dir(wt.Source.path))))
+			}
 		}
 	}
 
@@ -153,14 +236,16 @@ func (g *Generator) Process(groupedWork []work) (File, error) {
 	}
 
 	for _, w := range groupedWork {
-		if err := g.generate(w.Source, w.Destination); err != nil {
-			return result, err
+		if wt, ok := any(w).(work); ok {
+			if err := g.generate(wt.Source, wt.Destination); err != nil {
+				return result, err
+			}
+			g.Printf("\n\n")
 		}
-		g.Printf("\n\n")
 	}
 
 	return File{
-		Path: filepath.Dir(groupedWork[0].Destination.path),
+		Path: filepath.Dir(regularWork.Destination.path),
 		Buf:  g.format(),
 	}, nil
 }

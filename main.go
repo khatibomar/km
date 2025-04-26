@@ -84,6 +84,13 @@ func main() {
 		workChan    = make(chan []work, *routinesNumber)
 	)
 
+	schema := cfg.BuildTOMLSchema()
+	schemaPath := filepath.Join(filepath.Dir(*configPath), ".km_schema.json")
+	defaultLogger.Info("Generating TOML schema file: %s", schemaPath)
+	if err := os.WriteFile(schemaPath, []byte(schema), 0644); err != nil {
+		defaultLogger.Fatal("Error writing schema file: %v", err)
+	}
+
 	cfgDir := filepath.Dir(*configPath)
 
 	currDir, err := os.Getwd()
@@ -116,34 +123,36 @@ func main() {
 			if err != nil {
 				defaultLogger.Fatal("Error loading source file: %v", err)
 			}
-			destinationNode, err := loadAstFromFile(path.Join(cfgDir, m.Destination.Path))
-			if err != nil {
-				defaultLogger.Fatal("Error loading destination file: %v", err)
-			}
+			for _, d := range m.Destinations {
+				destinationNode, err := loadAstFromFile(path.Join(cfgDir, d.Path))
+				if err != nil {
+					defaultLogger.Fatal("Error loading destination file: %v", err)
+				}
 
-			ignoredMap := make(map[string]struct{})
-			for _, ignoreField := range m.Destination.IgnoredFields {
-				ignoredMap[ignoreField] = struct{}{}
-			}
+				ignoredMap := make(map[string]struct{})
+				for _, ignoreField := range d.IgnoredFields {
+					ignoredMap[ignoreField] = struct{}{}
+				}
 
-			source := SourceData{
-				name: m.Source.Name,
-				node: sourceNode,
-				path: m.Source.Path,
-			}
+				source := SourceData{
+					name: m.Source.Name,
+					node: sourceNode,
+					path: m.Source.Path,
+				}
 
-			destination := DestinationData{
-				name:       m.Destination.Name,
-				node:       destinationNode,
-				path:       m.Destination.Path,
-				ignoredMap: ignoredMap,
-				fieldsMap:  m.Destination.FieldsMap,
-			}
+				destination := DestinationData{
+					name:       d.Name,
+					node:       destinationNode,
+					path:       d.Path,
+					ignoredMap: ignoredMap,
+					fieldsMap:  d.FieldsMap,
+				}
 
-			groupedWork = append(groupedWork, work{
-				Source:      source,
-				Destination: destination,
-			})
+				groupedWork = append(groupedWork, work{
+					Source:      source,
+					Destination: destination,
+				})
+			}
 		}
 		batchWork = append(batchWork, groupedWork)
 	}
@@ -196,12 +205,12 @@ func handleWorkErrors(errChan <-chan error) {
 func worker(wg *sync.WaitGroup, workChan <-chan []work, results chan<- File, errChan chan<- error, cfg Config) {
 	for w := range workChan {
 		defer wg.Done()
-		g := Generator{
+		g := &Generator{
 			style:          cfg.Settings.Style,
 			module:         cfg.Settings.Module,
 			pathFromModule: cfg.Settings.PathFromModule,
 		}
-		result, err := g.Process(w)
+		result, err := Process(g, w)
 		if err != nil {
 			errChan <- err
 			return
@@ -218,8 +227,10 @@ func Usage() {
 func groupMappings(mappings []Mapping) map[string][]Mapping {
 	groupedMappings := make(map[string][]Mapping)
 	for _, m := range mappings {
-		destinationPath := filepath.Dir(m.Destination.Path)
-		groupedMappings[destinationPath] = append(groupedMappings[destinationPath], m)
+		for _, d := range m.Destinations {
+			destinationPath := filepath.Dir(d.Path)
+			groupedMappings[destinationPath] = append(groupedMappings[destinationPath], m)
+		}
 	}
 
 	return groupedMappings
@@ -252,4 +263,25 @@ type DestinationData struct {
 type work struct {
 	Source      SourceData
 	Destination DestinationData
+}
+
+type MapPlugin int
+
+const (
+	FromMap MapPlugin = iota
+	ToMap
+)
+
+var mapPlugins = map[string]MapPlugin{
+	"from_map": FromMap,
+	"to_map":   ToMap,
+}
+
+type mapWork[T SourceData | DestinationData] struct {
+	Target T
+	plugin MapPlugin
+}
+
+type workTyper interface {
+	work | mapWork[SourceData]
 }

@@ -5,7 +5,7 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
-	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -488,33 +488,53 @@ func TestGenerate(t *testing.T) {
 func TestGroupMappings(t *testing.T) {
 	var mappings []Mapping
 	mappings = append(mappings, Mapping{
-		Destination: Destination{
-			Path: "/dir/d1/file.go",
+		Destinations: []Destination{
+			{
+				Path: filepath.Join("dir", "d1", "file.go"),
+			},
+			{
+				Path: filepath.Join("dir", "d2", "file2.go"),
+			},
 		},
 	})
 	mappings = append(mappings, Mapping{
-		Destination: Destination{
-			Path: "/dir/d1/file2.go",
+		Destinations: []Destination{
+			{
+				Path: filepath.Join("dir", "d1", "file2.go"),
+			},
+			{
+				Path: filepath.Join("dir", "d3", "file3.go"),
+			},
 		},
 	})
 	mappings = append(mappings, Mapping{
-		Destination: Destination{
-			Path: "/dir/d2/file1.go",
+		Destinations: []Destination{
+			{
+				Path: filepath.Join("dir", "d2", "file1.go"),
+			},
 		},
 	})
 	res := groupMappings(mappings)
-	if len(res) != 2 {
-		t.Errorf("Expected 2 groups but got %d", len(res))
+	if len(res) != 3 {
+		t.Errorf("Expected 3 groups but got %d", len(res))
 	}
 
-	dirD1 := fmt.Sprintf("%c%s%c%s", os.PathSeparator, "dir", os.PathSeparator, "d1")
-	dirD2 := fmt.Sprintf("%c%s%c%s", os.PathSeparator, "dir", os.PathSeparator, "d2")
+	dirD1 := filepath.Join("dir", "d1")
+	dirD2 := filepath.Join("dir", "d2")
+	dirD3 := filepath.Join("dir", "d3")
 
-	if !equalMappingSlice(res[dirD1], mappings[:2]) {
-		t.Errorf("Expected mappings %v but got %v for dir %s", mappings[:2], res[dirD1], dirD1)
+	expectedD1 := []Mapping{mappings[0], mappings[1]}
+	expectedD2 := []Mapping{mappings[0], mappings[2]}
+	expectedD3 := []Mapping{mappings[1]}
+
+	if !equalMappingSlice(res[dirD1], expectedD1) {
+		t.Errorf("Expected mappings %v but got %v for dir %s", expectedD1, res[dirD1], dirD1)
 	}
-	if !equalMappingSlice(res[dirD2], mappings[2:]) {
-		t.Errorf("Expected mappings %v but got %v for dir %s", mappings[2:], res[dirD2], dirD2)
+	if !equalMappingSlice(res[dirD2], expectedD2) {
+		t.Errorf("Expected mappings %v but got %v for dir %s", expectedD2, res[dirD2], dirD2)
+	}
+	if !equalMappingSlice(res[dirD3], expectedD3) {
+		t.Errorf("Expected mappings %v but got %v for dir %s", expectedD3, res[dirD3], dirD3)
 	}
 }
 
@@ -559,8 +579,8 @@ func TestProcess(t *testing.T) {
 	}
 
 	t.Run("No work", func(t *testing.T) {
-		g := Generator{}
-		_, err := g.Process(groupedWork)
+		g := &Generator{}
+		_, err := Process(g, groupedWork)
 		if err != errNoWork {
 			t.Errorf("Expected error %v but got %v", errNoWork, err)
 		}
@@ -612,8 +632,8 @@ func TestProcess(t *testing.T) {
 		w = generateWorkFromSrcs(code2, "T", code1, "S")
 		groupedWork = append(groupedWork, w)
 
-		g := Generator{}
-		f, err := g.Process(groupedWork)
+		g := &Generator{}
+		f, err := Process(g, groupedWork)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -653,8 +673,8 @@ func TestProcess(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		g := Generator{}
-		f, err := g.Process(groupedWork)
+		g := &Generator{}
+		f, err := Process(g, groupedWork)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -694,8 +714,8 @@ func TestProcess(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		g := Generator{}
-		f, err := g.Process(groupedWork)
+		g := &Generator{}
+		f, err := Process(g, groupedWork)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -731,8 +751,8 @@ func TestProcess(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		g := Generator{}
-		f, err := g.Process(groupedWork)
+		g := &Generator{}
+		f, err := Process(g, groupedWork)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -768,8 +788,8 @@ func TestProcess(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		g := Generator{}
-		f, err := g.Process(groupedWork)
+		g := &Generator{}
+		f, err := Process(g, groupedWork)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -891,11 +911,10 @@ func TestStyles(t *testing.T) {
 			style: "pointer",
 		}
 
-		expectedOutput, err := format.Source(
-			[]byte(`func (dest *D) FromS(src S) {
+		expectedOutput := `
+			[]byte(func (dest *D) FromS(src S) {
 				dest.a = src.a
-			}`),
-		)
+			})`
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -905,7 +924,7 @@ func TestStyles(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if string(expectedOutput) != string(g.format()) {
+		if codeEqual(expectedOutput, string(g.format())) {
 			t.Errorf("Expected:\n%s\n\nBut got:\n%s", string(expectedOutput), string(g.format()))
 		}
 	})
@@ -934,4 +953,289 @@ func TestStyles(t *testing.T) {
 			t.Errorf("Expected:\n%s\n\nBut got:\n%s", string(expectedOutput), string(g.format()))
 		}
 	})
+}
+
+func TestGenerateMapForSource(t *testing.T) {
+	type testInput struct {
+		code        string
+		typeName    string
+		mapPlugin   MapPlugin
+		style       string
+		expected    string
+		expectError error
+	}
+
+	runTest := func(t *testing.T, input testInput) {
+		fset := token.NewFileSet()
+		node, err := parser.ParseFile(fset, "main.go", input.code, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		g := Generator{
+			style: input.style,
+		}
+
+		source := SourceData{
+			node: node,
+			name: input.typeName,
+		}
+
+		err = g.generateMapForSource(source, input.mapPlugin)
+		if err != input.expectError {
+			if err == nil {
+				t.Errorf("Expected error %v but got nil", input.expectError)
+			} else if input.expectError == nil {
+				t.Errorf("Expected nil error but got %v", err)
+			} else if err.Error() != input.expectError.Error() {
+				t.Errorf("Expected error %v but got %v", input.expectError, err)
+			}
+		}
+
+		if codeEqual(input.expected, string(g.format())) {
+			t.Errorf("Expected output:\n%s\n\nBut got:\n%s", string(input.expected), string(g.format()))
+		}
+	}
+
+	t.Run("struct to map - value style", func(t *testing.T) {
+		code := `
+			package p
+
+			type Person struct {
+				Name    string
+				Age     int
+				private bool
+			}`
+
+		expected := `func (dest Person) ToMap() map[string]any {
+			result := make(map[string]any)
+			result["Name"] = dest.Name
+			result["Age"] = dest.Age
+			return result
+		}`
+
+		runTest(t, testInput{
+			code:        code,
+			typeName:    "Person",
+			mapPlugin:   ToMap,
+			style:       "value",
+			expected:    expected,
+			expectError: nil,
+		})
+	})
+
+	t.Run("struct to map - pointer style", func(t *testing.T) {
+		code := `
+			package p
+
+			type Person struct {
+				Name    string
+				Age     int
+				private bool
+			}`
+
+		expected := `
+		package p
+		func (dest *Person) ToMap() map[string]any {
+			result := make(map[string]any)
+			result["Name"] = dest.Name
+			result["Age"] = dest.Age
+			return result
+		}`
+
+		runTest(t, testInput{
+			code:        code,
+			typeName:    "Person",
+			mapPlugin:   ToMap,
+			style:       "pointer",
+			expected:    expected,
+			expectError: nil,
+		})
+	})
+
+	t.Run("struct to map - standalone style", func(t *testing.T) {
+		code := `
+			package p
+
+			type Person struct {
+				Name    string
+				Age     int
+				private bool
+			}`
+
+		expected := `
+		package p
+		func PersonToMap(dest Person) map[string]any {
+			result := make(map[string]any)
+			result["Name"] = dest.Name
+			result["Age"] = dest.Age
+			return result
+		}`
+
+		runTest(t, testInput{
+			code:        code,
+			typeName:    "Person",
+			mapPlugin:   ToMap,
+			style:       "standalone",
+			expected:    expected,
+			expectError: nil,
+		})
+	})
+
+	t.Run("map to struct - value style", func(t *testing.T) {
+		code := `
+			package p
+
+			type Person struct {
+				Name    string
+				Age     int
+				private bool
+			}`
+
+		expected := `
+		package p
+		func (dest Person) FromMap(src map[string]any) Person {
+			if v, ok := src["Name"].(string); ok {
+				dest.Name = v
+			}
+			if v, ok := src["Age"].(int); ok {
+				dest.Age = v
+			}
+			return dest
+		}`
+
+		runTest(t, testInput{
+			code:        code,
+			typeName:    "Person",
+			mapPlugin:   FromMap,
+			style:       "value",
+			expected:    expected,
+			expectError: nil,
+		})
+	})
+
+	t.Run("map to struct - pointer style", func(t *testing.T) {
+		code := `
+			package p
+
+			type Person struct {
+				Name    string
+				Age     int
+				private bool
+			}`
+
+		expected := `
+		package p
+		func (dest *Person) FromMap(src map[string]any) {
+			if v, ok := src["Name"].(string); ok {
+				dest.Name = v
+			}
+			if v, ok := src["Age"].(int); ok {
+				dest.Age = v
+			}
+		}`
+
+		runTest(t, testInput{
+			code:        code,
+			typeName:    "Person",
+			mapPlugin:   FromMap,
+			style:       "pointer",
+			expected:    expected,
+			expectError: nil,
+		})
+	})
+
+	t.Run("map to struct - standalone style", func(t *testing.T) {
+		code := `
+			package p
+
+			type Person struct {
+				Name    string
+				Age     int
+				private bool
+			}`
+
+		expected := `
+		package p
+		func PersonFromMap(dest Person, src map[string]any) Person {
+			if v, ok := src["Name"].(string); ok {
+				dest.Name = v
+			}
+			if v, ok := src["Age"].(int); ok {
+				dest.Age = v
+			}
+			return dest
+		}`
+
+		runTest(t, testInput{
+			code:        code,
+			typeName:    "Person",
+			mapPlugin:   FromMap,
+			style:       "standalone",
+			expected:    expected,
+			expectError: nil,
+		})
+	})
+
+	t.Run("map to map type - value style", func(t *testing.T) {
+		code := `
+			package p
+
+			type DataMap map[string]any`
+
+		expected := `
+		package p
+		func (dest DataMap) FromMap(src map[string]any) DataMap {
+			for k, v := range src {
+				dest[k] = v
+			}
+			return dest
+		}`
+
+		runTest(t, testInput{
+			code:        code,
+			typeName:    "DataMap",
+			mapPlugin:   FromMap,
+			style:       "value",
+			expected:    expected,
+			expectError: nil,
+		})
+	})
+
+	t.Run("map to map alias - value style", func(t *testing.T) {
+		code := `
+			package p
+
+			type DataMap = map[string]any`
+
+		expected := `
+		package p
+		func (dest DataMap) FromMap(src map[string]any) DataMap {
+			for k, v := range src {
+				dest[k] = v
+			}
+			return dest
+		}`
+
+		runTest(t, testInput{
+			code:        code,
+			typeName:    "DataMap",
+			mapPlugin:   FromMap,
+			style:       "value",
+			expected:    expected,
+			expectError: nil,
+		})
+	})
+}
+
+func codeEqual(got, want string) bool {
+	gotFormatted, err := format.Source([]byte(got))
+	if err != nil {
+		return false
+	}
+	wantFormatted, err := format.Source([]byte(want))
+	if err != nil {
+		return false
+	}
+	return string(gotFormatted) == string(wantFormatted)
 }
