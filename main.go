@@ -3,24 +3,72 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"go/ast"
 	"os"
 	"path"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 
 	"github.com/BurntSushi/toml"
 )
 
+const logo = `
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣶⣶⠒⠖⢰⣶⠶⢶⡶⠀⣶⡶⠶⠆⢰⣶⠶⠶⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣴⡄⢹⣿⣦⣾⣋⠐⣿⣷⣤⡄⣸⣿⣤⣤⠀⠀⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⠀⠀⢹⣿⠀⢹⣯⠀⣿⣧⢀⡀⢼⣿⡀⣀⠀⠀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠂⠠⠀⠒⠐⠒⠀⠀⠀⠛⠛⠀⠀⠘⠛⠀⠘⠓⠈⠛⠛⠛⠃⠘⠛⠛⠛⠀⠀⠑⠂⠀⠐⠂⠀⠀⠀⠀⠀⠒⠀⠀
+⠀⠀⣀⣀⣀⣀⠀⠀⢀⣀⣀⠀⠀⣀⣀⠀⠀⢀⣀⣀⣀⠀⣀⣀⣀⡀⢀⣀⣀⣀⣀⢀⣀⡀⢀⣀⡀⠀⣀⡀⢀⣀⣀⣀⡀⠀⠃
+⠀⠀⣿⡿⠙⣿⡇⠀⣿⡟⣿⡄⠀⣿⣇⠀⠀⢸⣿⠋⠛⢸⣿⡋⠻⠷⠈⢛⣿⡟⠙⢸⣿⡇⢸⣿⣷⠀⣿⡇⢸⣿⡟⠙⠃⠀⡆
+⠀⠀⣿⣿⣶⣿⠇⢰⣿⣇⣿⣇⠀⣿⡧⠀⠀⢸⣿⠶⠶⠀⠛⢿⣶⣄⠀⢨⣿⡇⠀⢸⣿⡇⢸⣿⢻⣇⣿⡇⢸⣿⡷⠶⠀⠀⠃
+⠀⠀⣿⣷⠀⠀⠀⣼⣿⠛⢻⣿⠀⣿⣿⣠⡀⢼⣿⣄⣄⢼⣾⣄⣽⣿⠂⠰⣿⡇⠀⢸⣿⡇⢸⣿⠀⢿⣿⡇⢸⣿⣧⣠⡄⠀⠀
+⠀⠀⠉⠁⠀⠀⠀⠉⠁⠀⠈⠉⠁⠉⠉⠉⠀⠈⠉⠉⠉⠀⠉⠉⠉⠁⠀⠀⠉⠁⠀⠀⠉⠁⠀⠉⠀⠈⠉⠁⠈⠉⠉⠉⠁⠀⠀
+⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀
+⠀⠀⣿⡽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀
+⠀⠀⣯⣟⣷⣻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀
+⠀⠀⣿⣞⣷⣻⢯⣟⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀
+⠀⠀⣷⣻⢾⡽⣯⣟⣾⡽⣿⣿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠿⠇⠀⠀
+⠀⠀⣿⡽⣯⣟⡷⣯⡷⣿⡽⣯⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⣟⡷⣯⣟⡷⣯⡷⣯⢷⣯⣟⡷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⣿⡽⣷⢯⣟⡷⣿⣽⣻⢾⣽⣻⣽⠗⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⣯⢿⡽⣯⢿⣽⣳⣯⣟⡿⣾⠝⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⣿⢯⡿⣽⣻⢾⣽⢾⣽⣟⡁⣀⣀⣀⣀⢀⡀⣀⢀⡀⣀⢀⡀⣀⢀⡀⣀⢀⡀⣀⢀⡀⣀⢀⡀⣀⢀⡀⣀⢀⡀⣀⡀⠀⠀
+⠀⠀⡿⣯⢿⡽⣯⢿⣞⣿⢻⠼⣱⢣⢞⡲⡝⣮⢳⡝⣮⢳⡝⣮⢳⡝⣮⢳⡝⣮⢳⡝⣮⢳⡝⣮⢳⡝⣮⢳⡝⣎⢷⣣⡇⠀⠀
+⠀⠀⣿⡽⣯⢿⣽⡿⣏⣳⢫⣝⡱⣏⠾⣱⢏⢶⢫⡜⡶⢫⡜⡶⢫⡜⡶⢫⡜⡶⢫⡜⡶⢫⡜⡶⢫⡜⡶⢫⡼⢭⡖⣧⡇⠀⠀
+⠀⠀⣿⡽⣯⡿⣏⡳⠵⣎⡳⢎⡗⣮⢛⡵⣎⠯⣞⡹⣜⢧⣛⡵⣫⢞⡹⣇⢯⣓⠯⣞⡹⣇⢯⣓⠯⣞⡹⢧⡝⡶⣹⠖⡇⠀⠀
+⠀⠀⣯⣿⢻⡱⢇⣻⣙⢶⣹⢫⡞⣵⢫⡞⣭⢻⣜⡳⣝⢮⢧⡽⣱⢫⣳⡹⣎⣭⢻⡜⣧⢻⡼⣩⢟⡼⣭⢳⡝⡞⣵⢫⡇⠀⢰
+⡀⠀⠛⠃⠓⠋⠛⠒⠙⠚⠒⠋⠚⠘⠃⠛⠘⠓⠊⠓⠊⠓⠚⠒⠉⠓⠃⠓⠙⠒⠋⠚⠘⠓⠚⠑⠋⠒⠓⠋⠚⠙⠒⠛⠃⠀⡘
+⡰⠀⠀⢀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣶⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⠀⣠⡀⠀⠈⠀
+⠀⠀⢻⠚⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣤⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠀⢨⡄⠀⢸⠀
+⠁⠀⠀⣦⣄⠀⠀⠀⠀⠀⣴⡀⢠⣴⣤⣀⠀⠀⠀⠀⠀⠉⠀⣀⠀⠠⣄⠀⠀⠇⣀⣤⣄⠀⢀⠀⠀⡀⣀⠀⢸⠀⣏⣻⠀⠀⠆
+⡆⠀⢰⣅⣹⠇⠀⠀⠀⠀⠈⣧⣤⣤⣬⣽⣷⣤⠀⡌⠀⠀⠀⠹⣦⣤⣥⣤⣼⣯⣥⣤⣿⣤⣼⣦⣤⣷⣼⣤⣼⣦⣭⣽⡃⠀⠐
+⠡⡀⠀⠉⠁⠀⠀⠀⠀⢀⣴⠃⠁⠈⠀⠁⠀⠁⠠⣧⣀⣀⣠⡴⢃⣩⡤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠂
+⠀⠀⠁⠐⠄⠀⠉⠒⠚⠋⠁⠀⠔⠀⠀⠀⠀⠀⡀⠈⠉⠉⠁⠀⠈⠀⠀⠀⠀⠉⠉⠉⠀⠉⠁⠉⠉⠁⠀⠉⠈⠁⠀⠀⠉⠀⠀
+⠀⠀⠀⠀⠀⠐⠀⠤⠤⠄⠀⠁⠀⠀⠀⠀⠀⠀⠈⠀⠒⠂⠀⠉⠁⠀⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+`
+
 var (
 	configPath      = flag.String("config", "km.toml", "mapping configuration file")
-	debug           = flag.Bool("debug", false, "log result instead of writing to files")
+	debugging       = flag.Bool("debug", false, "log result instead of writing to files")
 	routinesNumber  = flag.Int("routines", 1, "number of routines")
 	errTypeNotFound = errors.New("specified type not found")
 	errNoWork       = errors.New("no work to process")
 )
 
+var version = "dev"
+
+func init() {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		version = info.Main.Version
+	}
+}
+
 func main() {
+	fmt.Print(logo)
+
+	defaultLogger.Info("Version: %s", version)
+
 	flag.Usage = Usage
 	flag.Parse()
 
@@ -114,7 +162,7 @@ func main() {
 	var generatedFiles []string
 
 	for f := range results {
-		if *debug {
+		if *debugging {
 			defaultLogger.Debug("%s", string(f.Buf))
 		} else {
 			p := filepath.Join(currDir, cfgDir, f.Path, "km_gen.go")
@@ -129,8 +177,10 @@ func main() {
 				defaultLogger.Fatal("Error writing file: %v", err)
 			}
 			generatedFiles = append(generatedFiles, p)
+			defaultLogger.Info("Generated file %s", p)
 		}
 	}
+	defaultLogger.Info("Generated %d files", len(generatedFiles))
 }
 
 func handleWorkErrors(errChan <-chan error) {

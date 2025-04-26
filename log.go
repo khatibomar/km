@@ -22,6 +22,10 @@ func (l *Logger) Printf(format string, args ...any) {
 	l.stdLogger.Printf(format+"\n", args...)
 }
 
+func (l *Logger) Info(format string, args ...any) {
+	l.stdLogger.Printf("INFO: "+format+"\n", args...)
+}
+
 func (l *Logger) Warning(format string, args ...any) {
 	l.stdLogger.Printf("WARNING: "+format+"\n", args...)
 }

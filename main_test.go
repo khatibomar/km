@@ -10,6 +10,10 @@ import (
 	"testing"
 )
 
+func init() {
+	version = "test"
+}
+
 func TestGetImports(t *testing.T) {
 	run := func(src string, expected []string) {
 		fset := token.NewFileSet()
