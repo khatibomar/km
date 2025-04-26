@@ -67,6 +67,10 @@ func init() {
 func main() {
 	fmt.Print(logo)
 
+	if *debugging {
+		defaultLogger = NewLogger(os.Stdout, os.Stderr, DebugLevel)
+	}
+
 	defaultLogger.Info("Version: %s", version)
 
 	flag.Usage = Usage
