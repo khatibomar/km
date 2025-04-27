@@ -1,3 +1,5 @@
+#:schema .km_schema.json
+
 [settings]
 style = "value"
 module = "github.com/khatibomar/km/"
@@ -7,6 +9,7 @@ path_from_module = "testdata"
 [mappings.source]
 name = "Car"
 path = "./car/car.go"
+plugins = ["from_map", "to_map"]
 
 [[mappings.destination]]
 name = "CarDTO"
@@ -14,10 +17,6 @@ path = "./dto/car_dto.go"
 ignore = ["Owner"]
 [mappings.destination.map]
 FactoryModel = "Model"
-
-[[mappings.plugins]]
-to_map = true
-from_map = true
 
 [[mappings]]
 [mappings.source]

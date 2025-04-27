@@ -78,10 +78,10 @@ func main() {
 
 	var (
 		cfg         Config
-		batchWork   [][]work
+		batchWork   [][]workTyper
 		wg          sync.WaitGroup
 		workErrChan = make(chan error, *routinesNumber)
-		workChan    = make(chan []work, *routinesNumber)
+		workChan    = make(chan []workTyper, *routinesNumber)
 	)
 
 	schema := cfg.BuildTOMLSchema()
@@ -117,12 +117,13 @@ func main() {
 	groupedMappings := groupMappings(cfg.Mappings)
 
 	for _, mapping := range groupedMappings {
-		var groupedWork []work
+		var groupedWork []workTyper
 		for _, m := range mapping {
 			sourceNode, err := loadAstFromFile(path.Join(cfgDir, m.Source.Path))
 			if err != nil {
 				defaultLogger.Fatal("Error loading source file: %v", err)
 			}
+
 			for _, d := range m.Destinations {
 				destinationNode, err := loadAstFromFile(path.Join(cfgDir, d.Path))
 				if err != nil {
@@ -154,16 +155,49 @@ func main() {
 				})
 			}
 		}
+		if len(groupedWork) == 0 {
+			continue
+		}
 		batchWork = append(batchWork, groupedWork)
 	}
 
-	results := make(chan File, len(batchWork))
+	mapPluginWork := make([]workTyper, 0)
+	for _, m := range cfg.Mappings {
+		if m.Source.Plugins == nil {
+			continue
+		}
+		for _, plugin := range m.Source.Plugins {
+			sourceNode, err := loadAstFromFile(path.Join(cfgDir, m.Source.Path))
+			if err != nil {
+				defaultLogger.Fatal("Error loading source file: %v", err)
+			}
+			mapPluginWork = append(mapPluginWork, mapWork{
+				Target: SourceData{
+					name: m.Source.Name,
+					node: sourceNode,
+					path: m.Source.Path,
+				},
+				plugin: getMapType(plugin),
+			})
+		}
+	}
+
+	results := make(chan File, len(batchWork)+len(mapPluginWork))
 
 	go handleWorkErrors(workErrChan)
-	go worker(&wg, workChan, results, workErrChan, cfg)
 
-	wg.Add(len(batchWork))
+	numWorkers := *routinesNumber
+	for range numWorkers {
+		go worker(&wg, workChan, results, workErrChan, cfg)
+	}
+
+	if len(mapPluginWork) > 0 {
+		wg.Add(1)
+		workChan <- mapPluginWork
+	}
+
 	for _, groupedWork := range batchWork {
+		wg.Add(1)
 		workChan <- groupedWork
 	}
 
@@ -202,7 +236,7 @@ func handleWorkErrors(errChan <-chan error) {
 	}
 }
 
-func worker(wg *sync.WaitGroup, workChan <-chan []work, results chan<- File, errChan chan<- error, cfg Config) {
+func worker(wg *sync.WaitGroup, workChan <-chan []workTyper, results chan<- File, errChan chan<- error, cfg Config) {
 	for w := range workChan {
 		defer wg.Done()
 		g := &Generator{
@@ -265,6 +299,8 @@ type work struct {
 	Destination DestinationData
 }
 
+func (w work) isWork() {}
+
 type MapPlugin int
 
 const (
@@ -272,16 +308,24 @@ const (
 	ToMap
 )
 
-var mapPlugins = map[string]MapPlugin{
-	"from_map": FromMap,
-	"to_map":   ToMap,
+func getMapType(plugin string) MapPlugin {
+	switch plugin {
+	case "from_map":
+		return FromMap
+	case "to_map":
+		return ToMap
+	default:
+		panic(fmt.Sprintf("unsupported plugin: %s", plugin))
+	}
 }
 
-type mapWork[T SourceData | DestinationData] struct {
-	Target T
+type mapWork struct {
+	Target SourceData
 	plugin MapPlugin
 }
 
+func (mw mapWork) isWork() {}
+
 type workTyper interface {
-	work | mapWork[SourceData]
+	isWork()
 }

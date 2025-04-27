@@ -10,8 +10,9 @@ type Settings struct {
 }
 
 type Source struct {
-	Name string `toml:"name"`
-	Path string `toml:"path"`
+	Name    string   `toml:"name"`
+	Path    string   `toml:"path"`
+	Plugins []string `toml:"plugins"`
 }
 
 type Destination struct {
@@ -25,7 +26,6 @@ type Mapping struct {
 	Settings     Settings      `toml:"settings"`
 	Source       Source        `toml:"source"`
 	Destinations []Destination `toml:"destination"`
-	Plugins      []string      `toml:"plugins"`
 }
 
 type Config struct {

@@ -104,6 +104,11 @@ functionCloser:
 		g.Printf("return dest }")
 	}
 
+	// NOTE(khatibomar): revist this later, maybe we need it in some edge cases
+	// like having more code to be generated after this method
+	// so we need breaking lines at end.
+	// g.Printf("\n\n")
+
 	return nil
 }
 
@@ -141,7 +146,6 @@ func (g *Generator) generateMapForSource(source SourceData, plugin MapPlugin) er
 				g.Printf("result[\"%s\"] = dest.%s\n", field.Name, field.Name)
 			}
 		}
-		g.Printf("return result")
 	} else {
 		if isMapType(source.node, source.name) {
 			for _, field := range fields {
@@ -158,11 +162,18 @@ func (g *Generator) generateMapForSource(source SourceData, plugin MapPlugin) er
 		}
 	}
 
-	if g.style == "pointer" {
-		g.Printf("}")
+	if plugin == ToMap {
+		g.Printf("return result }")
 	} else {
-		g.Printf("return dest }")
+		switch g.style {
+		case "pointer":
+			g.Printf("}")
+		case "value", "standalone", "":
+			g.Printf("return dest }")
+		}
 	}
+
+	g.Printf("\n\n")
 
 	return nil
 }
@@ -198,11 +209,15 @@ func Process[T workTyper](g *Generator, groupedWork []T) (File, error) {
 
 	firstWork := groupedWork[0]
 
-	if srcWork, ok := any(firstWork).(mapWork[SourceData]); ok {
+	if srcWork, ok := any(firstWork).(mapWork); ok {
 		g.Printf("package %s\n", getPackage(srcWork.Target.node))
 
-		if err := g.generateMapForSource(srcWork.Target, srcWork.plugin); err != nil {
-			return result, err
+		for _, w := range groupedWork {
+			if wt, ok := any(w).(mapWork); ok {
+				if err := g.generateMapForSource(wt.Target, wt.plugin); err != nil {
+					return result, err
+				}
+			}
 		}
 
 		return File{
@@ -213,7 +228,7 @@ func Process[T workTyper](g *Generator, groupedWork []T) (File, error) {
 
 	regularWork, ok := any(firstWork).(work)
 	if !ok {
-		return result, fmt.Errorf("unsupported work type")
+		return result, fmt.Errorf("unsupported work type: %T", firstWork)
 	}
 
 	g.Printf("package %s\n", getPackage(regularWork.Destination.node))
