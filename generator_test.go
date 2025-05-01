@@ -1177,6 +1177,105 @@ func TestGenerateMapForSource(t *testing.T) {
 		})
 	})
 
+	t.Run("nested struct to map - value style", func(t *testing.T) {
+		code := `
+			package p
+
+			type Address struct {
+				Street string
+				City   string
+			}
+
+			type Person struct {
+				Name    string
+				Age     int
+				Address Address
+			}`
+
+		expected := `
+		package p
+		func (dest Person) ToMap() map[string]any {
+			result := make(map[string]any)
+			result["Name"] = dest.Name
+			result["Age"] = dest.Age
+			address := make(map[string]any)
+			address["Street"] = dest.Address.Street
+			address["City"] = dest.Address.City
+			result["Address"] = address
+			return result
+		}`
+
+		runTest(t, testInput{
+			code:        code,
+			typeName:    "Person",
+			mapPlugin:   ToMap,
+			style:       "value",
+			expected:    expected,
+			expectError: nil,
+		})
+	})
+
+	t.Run("struct with slices to map - value style", func(t *testing.T) {
+		code := `
+			package p
+
+			type Person struct {
+				Name     string
+				Hobbies  []string
+				Scores   []int
+			}`
+
+		expected := `
+		package p
+		func (dest Person) ToMap() map[string]any {
+			result := make(map[string]any)
+			result["Name"] = dest.Name
+			result["Hobbies"] = dest.Hobbies
+			result["Scores"] = dest.Scores
+			return result
+		}`
+
+		runTest(t, testInput{
+			code:        code,
+			typeName:    "Person",
+			mapPlugin:   ToMap,
+			style:       "value",
+			expected:    expected,
+			expectError: nil,
+		})
+	})
+
+	t.Run("struct with custom types to map - value style", func(t *testing.T) {
+		code := `
+			package p
+
+			type CustomID int
+			type Status string
+
+			type Record struct {
+				ID     CustomID
+				State  Status
+			}`
+
+		expected := `
+		package p
+		func (dest Record) ToMap() map[string]any {
+			result := make(map[string]any)
+			result["ID"] = dest.ID
+			result["State"] = dest.State
+			return result
+		}`
+
+		runTest(t, testInput{
+			code:        code,
+			typeName:    "Record",
+			mapPlugin:   ToMap,
+			style:       "value",
+			expected:    expected,
+			expectError: nil,
+		})
+	})
+
 	t.Run("map to map type - value style", func(t *testing.T) {
 		code := `
 			package p
