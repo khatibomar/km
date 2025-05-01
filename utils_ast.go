@@ -26,33 +26,49 @@ func getImports(node *ast.File) []string {
 }
 
 func getFields(node *ast.File, typeName string) ([]Field, error) {
-	var fields []Field
 	var found bool
 	var err error
+	var fields []Field
 
 	ast.Inspect(node, func(n ast.Node) bool {
 		if typeSpec, ok := n.(*ast.TypeSpec); ok {
 			if typeSpec.Name != nil && typeSpec.Name.String() == typeName {
 				found = true
+
 				switch t := typeSpec.Type.(type) {
 				case *ast.StructType:
 					for _, f := range t.Fields.List {
-						for _, n := range f.Names {
-							fields = append(fields, Field{
-								Name: n.Name,
-								Type: extractTypeFromExpression(f.Type),
-							})
+						if len(f.Names) == 0 {
+							// Embedded field
+							children := getChildrenFields(f.Type)
+							field := Field{
+								Name:     extractTypeFromExpression(f.Type),
+								Type:     extractTypeFromExpression(f.Type),
+								Children: children,
+							}
+							fields = append(fields, field)
+						} else {
+							for _, n := range f.Names {
+								children := getChildrenFields(f.Type)
+								field := Field{
+									Name:     n.Name,
+									Type:     extractTypeFromExpression(f.Type),
+									Children: children,
+								}
+								fields = append(fields, field)
+							}
 						}
 					}
 				case *ast.MapType:
-					fields = append(fields, Field{
+					keyField := Field{
 						Name: "key",
 						Type: extractTypeFromExpression(t.Key),
-					})
-					fields = append(fields, Field{
+					}
+					valueField := Field{
 						Name: "value",
 						Type: extractTypeFromExpression(t.Value),
-					})
+					}
+					fields = append(fields, keyField, valueField)
 				}
 				return false
 			}
@@ -65,6 +81,44 @@ func getFields(node *ast.File, typeName string) ([]Field, error) {
 	}
 
 	return fields, err
+}
+
+func getChildrenFields(expr ast.Expr) *[]Field {
+	switch t := expr.(type) {
+	case *ast.StructType:
+		var children []Field
+		for _, f := range t.Fields.List {
+			if len(f.Names) == 0 {
+				field := Field{
+					Name:     extractTypeFromExpression(f.Type),
+					Type:     extractTypeFromExpression(f.Type),
+					Children: getChildrenFields(f.Type),
+				}
+				children = append(children, field)
+			} else {
+				for _, n := range f.Names {
+					field := Field{
+						Name:     n.Name,
+						Type:     extractTypeFromExpression(f.Type),
+						Children: getChildrenFields(f.Type),
+					}
+					children = append(children, field)
+				}
+			}
+		}
+		return &children
+	case *ast.Ident:
+		if obj := t.Obj; obj != nil {
+			if typeSpec, ok := obj.Decl.(*ast.TypeSpec); ok {
+				if structType, ok := typeSpec.Type.(*ast.StructType); ok {
+					return getChildrenFields(structType)
+				}
+			}
+		}
+		return nil
+	default:
+		return nil
+	}
 }
 
 func extractTypeFromExpression(expr ast.Expr) string {

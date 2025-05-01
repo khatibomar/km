@@ -137,6 +137,24 @@ func TestGetFields(t *testing.T) {
 			if f.Type != expectedFields[i].Type {
 				t.Errorf("Expected field type %s but got %s", expectedFields[i].Type, f.Type)
 			}
+			if (f.Children == nil) != (expectedFields[i].Children == nil) {
+				t.Errorf("Expected children nil status %v but got %v", expectedFields[i].Children == nil, f.Children == nil)
+			}
+			if f.Children != nil && expectedFields[i].Children != nil {
+				if len(*f.Children) != len(*expectedFields[i].Children) {
+					t.Errorf("Expected %d children but got %d", len(*expectedFields[i].Children), len(*f.Children))
+				} else {
+					for j, child := range *f.Children {
+						expectedChild := (*expectedFields[i].Children)[j]
+						if child.Name != expectedChild.Name {
+							t.Errorf("Expected child name %s but got %s", expectedChild.Name, child.Name)
+						}
+						if child.Type != expectedChild.Type {
+							t.Errorf("Expected child type %s but got %s", expectedChild.Type, child.Type)
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -154,12 +172,36 @@ func TestGetFields(t *testing.T) {
 		}
 		`
 		run(src, "P", "p", []Field{
-			{"a", "int"},
-			{"B", "string"},
+			{"a", "int", nil},
+			{"B", "string", nil},
 		})
 
 		run(src, "K", "p", []Field{
-			{"a", "int"},
+			{"a", "int", nil},
+		})
+	})
+
+	t.Run("nested structs", func(t *testing.T) {
+		src := `
+		package p
+
+		type Address struct {
+			Street string
+			City   string
+		}
+
+		type Person struct {
+			Name    string
+			Address Address
+		}
+		`
+		children := []Field{
+			{"Street", "string", nil},
+			{"City", "string", nil},
+		}
+		run(src, "Person", "p", []Field{
+			{"Name", "string", nil},
+			{"Address", "Address", &children},
 		})
 	})
 
@@ -173,18 +215,18 @@ func TestGetFields(t *testing.T) {
 		`
 
 		run(src, "StringIntMap", "p", []Field{
-			{"key", "string"},
-			{"value", "int"},
+			{"key", "string", nil},
+			{"value", "int", nil},
 		})
 
 		run(src, "ComplexMap", "p", []Field{
-			{"key", "*string"},
-			{"value", "[]int"},
+			{"key", "*string", nil},
+			{"value", "[]int", nil},
 		})
 
 		run(src, "NestedMap", "p", []Field{
-			{"key", "string"},
-			{"value", "map[int]bool"},
+			{"key", "string", nil},
+			{"value", "map[int]bool", nil},
 		})
 	})
 

@@ -271,8 +271,9 @@ func groupMappings(mappings []Mapping) map[string][]Mapping {
 }
 
 type Field struct {
-	Name string
-	Type string
+	Name     string
+	Type     string
+	Children *[]Field
 }
 
 type File struct {
