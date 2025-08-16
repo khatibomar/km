@@ -357,6 +357,319 @@ func TestGenerate(t *testing.T) {
 		})
 	})
 
+	t.Run("nested complex types", func(t *testing.T) {
+		srcCode := `
+			package p
+
+			type User struct {
+				Name string
+				Details UserDetails
+				Settings *UserSettings
+				Friends []Friend
+			}
+
+			type UserDetails struct {
+				Age int
+				Address Address
+			}
+
+			type Address struct {
+				Street string
+				City string
+			}
+
+			type UserSettings struct {
+				Theme string
+				Language string
+			}
+
+			type Friend struct {
+				Name string
+				Since int
+			}
+		`
+
+		dstCode := `
+			package q
+
+			type Customer struct {
+				Name string
+				Details CustomerInfo
+				Config *CustomerConfig
+				Contacts []Contact
+			}
+
+			type CustomerInfo struct {
+				Age int
+				Location Location
+			}
+
+			type Location struct {
+				Street string
+				City string
+			}
+
+			type CustomerConfig struct {
+				Theme string
+				Language string
+			}
+
+			type Contact struct {
+				Name string
+				Since int
+			}
+		`
+
+		expectedOutput := `func (dest Customer) FromUser(src p.User) Customer {
+			dest.Name = src.Name
+			dest.Details = dest.Details.FromUserDetails(src.Details)
+			if src.Settings != nil {
+				if dest.Config == nil {
+					dest.Config = &CustomerConfig{}
+				}
+				dest.Config = dest.Config.FromUserSettings(*src.Settings)
+			}
+			dest.Contacts = make([]Contact, len(src.Friends))
+			for i, f := range src.Friends {
+				dest.Contacts[i] = dest.Contacts[i].FromFriend(f)
+			}
+			return dest
+		}
+
+		func (dest CustomerInfo) FromUserDetails(src p.UserDetails) CustomerInfo {
+			dest.Age = src.Age
+			dest.Location = dest.Location.FromAddress(src.Address)
+			return dest
+		}
+
+		func (dest Location) FromAddress(src p.Address) Location {
+			dest.Street = src.Street
+			dest.City = src.City
+			return dest
+		}
+
+		func (dest *CustomerConfig) FromUserSettings(src p.UserSettings) *CustomerConfig {
+			dest.Theme = src.Theme
+			dest.Language = src.Language
+			return dest
+		}
+
+		func (dest Contact) FromFriend(src p.Friend) Contact {
+			dest.Name = src.Name
+			dest.Since = src.Since
+			return dest
+		}`
+
+		runTest(t, testInput{
+			srcCode:               srcCode,
+			destCode:              dstCode,
+			sourcePath:            "/pkg/p/user.go",
+			destPath:              "/pkg/q/customer.go",
+			srcName:               "User",
+			destName:              "Customer",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
+			fieldsMap: map[string]string{
+				"Config":   "Settings",
+				"Contacts": "Friends",
+				"Location": "Address",
+			},
+		})
+	})
+
+	t.Run("anonymous struct fields", func(t *testing.T) {
+		srcCode := `
+			package p
+
+			type Source struct {
+				string
+				int
+				Data struct {
+					Value float64
+				}
+				Meta struct {
+					Tags []string
+				}
+			}`
+
+		dstCode := `
+			package q
+
+			type Dest struct {
+				string
+				int
+				Data struct {
+					Value float64
+				}
+				Meta struct {
+					Tags []string
+				}
+			}`
+
+		expectedOutput := `func (dest Dest) FromSource(src p.Source) Dest {
+			dest.string = src.string
+			dest.int = src.int
+			dest.Data.Value = src.Data.Value
+			dest.Meta.Tags = append([]string{}, src.Meta.Tags...)
+			return dest
+		}`
+
+		runTest(t, testInput{
+			srcCode:               srcCode,
+			destCode:              dstCode,
+			sourcePath:            "/p/source.go",
+			destPath:              "/q/dest.go",
+			srcName:               "Source",
+			destName:              "Dest",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
+		})
+	})
+
+	t.Run("embedded struct types", func(t *testing.T) {
+		srcCode := `
+			package p
+
+			type Base struct {
+				ID int
+				CreatedAt string
+			}
+
+			type Source struct {
+				Base
+				Name string
+				Details struct {
+					Base
+					Extra string
+				}
+			}`
+
+		dstCode := `
+			package q
+
+			type DestBase struct {
+				ID int
+				CreatedAt string
+			}
+
+			type Dest struct {
+				DestBase
+				Name string
+				Details struct {
+					DestBase
+					Extra string
+				}
+			}`
+
+		expectedOutput := `func (dest Dest) FromSource(src p.Source) Dest {
+			dest.ID = src.ID
+			dest.CreatedAt = src.CreatedAt
+			dest.Name = src.Name
+			dest.Details.ID = src.Details.ID
+			dest.Details.CreatedAt = src.Details.CreatedAt
+			dest.Details.Extra = src.Details.Extra
+			return dest
+		}`
+
+		runTest(t, testInput{
+			srcCode:               srcCode,
+			destCode:              dstCode,
+			sourcePath:            "/p/source.go",
+			destPath:              "/q/dest.go",
+			srcName:               "Source",
+			destName:              "Dest",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
+		})
+	})
+
+	t.Run("generic types", func(t *testing.T) {
+		srcCode := `
+			package p
+
+			type Box[T any] struct {
+				Value T
+				Label string
+			}
+
+			type StringBox struct {
+				Value string
+				Label string
+			}
+		`
+
+		dstCode := `
+			package q
+
+			type Container[T any] struct {
+				Value T
+				Name string
+			}
+
+			type StringContainer struct {
+				Value string
+				Name string
+			}
+		`
+
+		expectedOutput := `func (dest StringContainer) FromStringBox(src p.StringBox) StringContainer {
+			dest.Value = src.Value
+			dest.Name = src.Label
+			return dest
+		}`
+
+		runTest(t, testInput{
+			srcCode:               srcCode,
+			destCode:              dstCode,
+			sourcePath:            "/p/box.go",
+			destPath:              "/q/container.go",
+			srcName:               "StringBox",
+			destName:              "StringContainer",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
+			fieldsMap: map[string]string{
+				"Name": "Label",
+			},
+		})
+	})
+
+	t.Run("same type names different packages", func(t *testing.T) {
+		srcCode := `
+			package foo
+
+			type User struct {
+				ID int
+				Name string
+			}
+		`
+
+		dstCode := `
+			package bar
+
+			type User struct {
+				ID int
+				Name string
+			}
+		`
+
+		expectedOutput := `func (dest User) FromUser(src foo.User) User {
+			dest.ID = src.ID
+			dest.Name = src.Name
+			return dest
+		}`
+
+		runTest(t, testInput{
+			srcCode:               srcCode,
+			destCode:              dstCode,
+			sourcePath:            "/foo/user.go",
+			destPath:              "/bar/user.go",
+			srcName:               "User",
+			destName:              "User",
+			expectedOutput:        expectedOutput,
+			expectedGenerateError: nil,
+		})
+	})
+
 	t.Run("complex field in dest but not refereing src", func(t *testing.T) {
 		srcCode := `
 			package p
