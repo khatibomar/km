@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/base32"
 	"fmt"
 	"go/format"
 	"reflect"
@@ -10,6 +12,18 @@ import (
 	"github.com/khatibomar/km/internal/user"
 	userdto "github.com/khatibomar/km/internal/userDTO"
 )
+
+func makeShortHash(input string) string {
+	h := sha256.Sum256([]byte(input))
+	encoded := base32.StdEncoding.EncodeToString(h[:])
+	encoded = strings.ToLower(strings.TrimRight(encoded, "="))
+
+	if encoded[0] >= '0' && encoded[0] <= '9' {
+		encoded = "x" + encoded
+	}
+
+	return encoded[:12]
+}
 
 func incompatibleTypePanic(source, destination reflect.Type) {
 	sb := strings.Builder{}
@@ -47,7 +61,7 @@ func receiverBuilder(in string) string {
 	return string(result)
 }
 
-func Map[S any, D any]() error {
+func Map[S any, D any]() {
 	var source S
 	var destination D
 
@@ -60,18 +74,35 @@ func Map[S any, D any]() error {
 		}
 	}
 
-	fmt.Println(srcType.PkgPath())
-	fmt.Println(dstType.PkgPath())
+	srcPkg := srcType.PkgPath()
+	srcHash := makeShortHash(srcPkg)
+	dstPkg := dstType.PkgPath()
+	dstHash := makeShortHash(dstPkg)
 
 	var code strings.Builder
 	code.Grow(1024)
+	fmt.Fprintf(&code, "package km\n")
+	fmt.Fprintf(&code, "import (\n")
+	if srcPkg != "" {
+		fmt.Fprintf(&code, "%s \"%s\"\n", srcHash, srcPkg)
+	}
+	if dstPkg != "" {
+		fmt.Fprintf(&code, "%s \"%s\"\n", dstHash, dstPkg)
+	}
+	fmt.Fprintf(&code, ")\n")
 
 	recv := receiverBuilder(srcType.Name())
 
 	switch dstType.Kind() {
 	case reflect.Struct:
-		fmt.Fprintf(&code, "func (%s *%s) To%s() %s {\n", recv, srcType.Name(), dstType.Name(), dstType.Name())
-		fmt.Fprintf(&code, "r := %s{}\n", dstType.Name())
+		fmt.Fprintf(&code, "func %sTo%s(%s %s.%s) %s {\n",
+			srcType.Name(),
+			dstType.Name(),
+			recv,
+			srcHash,
+			srcType.Name(),
+			dstType.Name())
+		fmt.Fprintf(&code, "r := %s.%s{}\n", dstHash, dstType.Name())
 		for i := 0; i < srcType.NumField(); i++ {
 			field := srcType.Field(i)
 			if _, ok := dstType.FieldByName(field.Name); ok {
@@ -80,7 +111,7 @@ func Map[S any, D any]() error {
 		}
 		code.WriteString("return r\n}\n")
 	case reflect.Map:
-		fmt.Fprintf(&code, "func (%s *%s) ToMap() map[string]any {\n", recv, srcType.Name())
+		fmt.Fprintf(&code, "func %sToMap(%s %s.%s) map[string]any {\n", srcType.Name(), recv, srcHash, srcType.Name())
 		fmt.Fprintf(&code, "r := make(map[string]any, %d)\n", srcType.NumField())
 		for i := 0; i < srcType.NumField(); i++ {
 			field := srcType.Field(i)
@@ -89,13 +120,14 @@ func Map[S any, D any]() error {
 		code.WriteString("return r\n}\n")
 	}
 
+	fmt.Printf("======== DEBUG ========: %s\n================\n", string(code.String()))
+
 	formatted, err := format.Source([]byte(code.String()))
 	if err != nil {
-		return fmt.Errorf("format error: %w", err)
+		panic(fmt.Errorf("format error: %w", err))
 	}
 
 	fmt.Println(string(formatted))
-	return nil
 }
 
 func main() {
