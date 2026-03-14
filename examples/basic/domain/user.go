@@ -1,4 +1,4 @@
-package user
+package domain
 
 type User struct {
 	Name   string
