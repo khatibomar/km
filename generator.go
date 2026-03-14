@@ -169,20 +169,11 @@ func (g *codeGenerator) build() ([]byte, error) {
 	}
 
 	wrapperWriter := &codeWriter{}
-	wrapperWriter.linef("type %sImpl struct{}", g.config.InterfaceName)
-	wrapperWriter.line("")
-	wrapperWriter.linef("func New%s() %s {", g.config.InterfaceName, g.config.InterfaceName)
-	wrapperWriter.indent++
-	wrapperWriter.linef("return &%sImpl{}", g.config.InterfaceName)
-	wrapperWriter.indent--
-	wrapperWriter.line("}")
-	wrapperWriter.line("")
-
 	for _, method := range g.methods {
 		sourceType := g.renderType(method.source)
 		destinationType := g.renderType(method.destination)
 
-		wrapperWriter.linef("func (m *%sImpl) %s(in %s) %s {", g.config.InterfaceName, method.methodName, sourceType, destinationType)
+		wrapperWriter.linef("func %s(in %s) %s {", method.methodName, sourceType, destinationType)
 		wrapperWriter.indent++
 		wrapperWriter.linef("return %s(in)", method.helper)
 		wrapperWriter.indent--
