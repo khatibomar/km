@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"go/format"
-	"go/token"
 	"go/types"
 	"os"
 	"path"
@@ -15,35 +14,16 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-type MappingSpec struct {
-	Source      string
-	Destination string
-	Function    string
-}
-
 type GeneratorConfig struct {
-	WorkingDir  string
-	OutputFile  string
-	PackageName string
-	PackagePath string
-	Mappings    []MappingSpec
+	WorkingDir    string
+	OutputFile    string
+	InterfaceName string
 }
 
-type parsedTypeSpec struct {
-	PackagePath string
-	TypeExpr    string
-}
-
-type resolvedType struct {
-	parsed parsedTypeSpec
-	typ    types.Type
-}
-
-type resolvedMapping struct {
-	spec        MappingSpec
-	source      resolvedType
-	destination resolvedType
-	function    string
+type interfaceMethod struct {
+	methodName  string
+	source      types.Type
+	destination types.Type
 	helper      string
 }
 
@@ -55,45 +35,15 @@ type helperDefinition struct {
 }
 
 type codeGenerator struct {
-	config          GeneratorConfig
-	imports         *importRegistry
-	resolvedMapping []resolvedMapping
-	helpers         map[string]*helperDefinition
-	helperQueue     []*helperDefinition
-	helperCounter   int
-	tempCounter     int
-}
-
-func ParseMappingSpec(raw string) (MappingSpec, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return MappingSpec{}, fmt.Errorf("empty mapping value")
-	}
-
-	mapping := MappingSpec{}
-	body := trimmed
-	if strings.Contains(trimmed, "#") {
-		parts := strings.SplitN(trimmed, "#", 2)
-		body = strings.TrimSpace(parts[0])
-		mapping.Function = strings.TrimSpace(parts[1])
-	}
-
-	pair := strings.SplitN(body, "=", 2)
-	if len(pair) != 2 {
-		return MappingSpec{}, fmt.Errorf("invalid mapping %q: expected source=destination[#FunctionName]", raw)
-	}
-
-	mapping.Source = strings.TrimSpace(pair[0])
-	mapping.Destination = strings.TrimSpace(pair[1])
-	if mapping.Source == "" || mapping.Destination == "" {
-		return MappingSpec{}, fmt.Errorf("invalid mapping %q: source and destination are required", raw)
-	}
-
-	if mapping.Function != "" && !isValidIdentifier(mapping.Function) {
-		return MappingSpec{}, fmt.Errorf("invalid function name %q", mapping.Function)
-	}
-
-	return mapping, nil
+	config        GeneratorConfig
+	packageName   string
+	packagePath   string
+	imports       *importRegistry
+	methods       []interfaceMethod
+	helpers       map[string]*helperDefinition
+	helperQueue   []*helperDefinition
+	helperCounter int
+	tempCounter   int
 }
 
 func Generate(config GeneratorConfig) error {
@@ -126,112 +76,84 @@ func newCodeGenerator(config GeneratorConfig) (*codeGenerator, error) {
 	if config.OutputFile == "" {
 		return nil, fmt.Errorf("output file is required")
 	}
-	if config.PackageName == "" {
-		return nil, fmt.Errorf("package name is required")
-	}
-	if !isValidIdentifier(config.PackageName) {
-		return nil, fmt.Errorf("invalid package name %q", config.PackageName)
-	}
-	if config.PackagePath == "" {
-		return nil, fmt.Errorf("package path is required")
-	}
-	if len(config.Mappings) == 0 {
-		return nil, fmt.Errorf("at least one mapping is required")
+	if config.InterfaceName == "" {
+		return nil, fmt.Errorf("interface name is required")
 	}
 
-	parsedMappings := make([]struct {
-		spec       MappingSpec
-		sourceSpec parsedTypeSpec
-		destSpec   parsedTypeSpec
-	}, 0, len(config.Mappings))
-
-	packageSet := map[string]struct{}{}
-	for _, mapping := range config.Mappings {
-		sourceSpec, err := parseTypeSpec(mapping.Source)
-		if err != nil {
-			return nil, fmt.Errorf("invalid source %q: %w", mapping.Source, err)
-		}
-		destSpec, err := parseTypeSpec(mapping.Destination)
-		if err != nil {
-			return nil, fmt.Errorf("invalid destination %q: %w", mapping.Destination, err)
-		}
-
-		parsedMappings = append(parsedMappings, struct {
-			spec       MappingSpec
-			sourceSpec parsedTypeSpec
-			destSpec   parsedTypeSpec
-		}{
-			spec:       mapping,
-			sourceSpec: sourceSpec,
-			destSpec:   destSpec,
-		})
-
-		packageSet[sourceSpec.PackagePath] = struct{}{}
-		packageSet[destSpec.PackagePath] = struct{}{}
+	cfg := &packages.Config{
+		Mode: packages.NeedName | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedImports,
+		Dir:  config.WorkingDir,
 	}
 
-	packagePaths := make([]string, 0, len(packageSet))
-	for packagePath := range packageSet {
-		packagePaths = append(packagePaths, packagePath)
-	}
-	sort.Strings(packagePaths)
-
-	loadedPackages, err := loadPackages(config.WorkingDir, packagePaths)
+	pkgs, err := packages.Load(cfg, ".")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load packages: %w", err)
+	}
+	if len(pkgs) == 0 {
+		return nil, fmt.Errorf("no packages found in %s", config.WorkingDir)
+	}
+
+	pkg := pkgs[0]
+	if len(pkg.Errors) > 0 {
+		return nil, fmt.Errorf("package errors: %v", pkg.Errors)
+	}
+
+	obj := pkg.Types.Scope().Lookup(config.InterfaceName)
+	if obj == nil {
+		return nil, fmt.Errorf("interface %q not found in package %s", config.InterfaceName, pkg.PkgPath)
+	}
+
+	named, isNamed := obj.Type().(*types.Named)
+	if !isNamed {
+		return nil, fmt.Errorf("%q is not a named type", config.InterfaceName)
+	}
+
+	iface, isInterface := named.Underlying().(*types.Interface)
+	if !isInterface {
+		return nil, fmt.Errorf("%q is not an interface", config.InterfaceName)
+	}
+
+	var methods []interfaceMethod
+	for i := 0; i < iface.NumMethods(); i++ {
+		method := iface.Method(i)
+		sig, ok := method.Type().(*types.Signature)
+		if !ok {
+			continue
+		}
+
+		if sig.Params().Len() != 1 {
+			return nil, fmt.Errorf("method %s must have exactly 1 parameter", method.Name())
+		}
+		if sig.Results().Len() != 1 {
+			return nil, fmt.Errorf("method %s must have exactly 1 return value", method.Name())
+		}
+
+		methods = append(methods, interfaceMethod{
+			methodName:  method.Name(),
+			source:      sig.Params().At(0).Type(),
+			destination: sig.Results().At(0).Type(),
+		})
 	}
 
 	generator := &codeGenerator{
-		config:  config,
-		imports: newImportRegistry(config.PackageName, config.PackagePath),
-		helpers: map[string]*helperDefinition{},
-	}
-
-	generator.resolvedMapping = make([]resolvedMapping, 0, len(parsedMappings))
-	for _, parsedMapping := range parsedMappings {
-		sourceType, err := resolveType(loadedPackages, parsedMapping.sourceSpec)
-		if err != nil {
-			return nil, fmt.Errorf("resolve source %q: %w", parsedMapping.spec.Source, err)
-		}
-		destinationType, err := resolveType(loadedPackages, parsedMapping.destSpec)
-		if err != nil {
-			return nil, fmt.Errorf("resolve destination %q: %w", parsedMapping.spec.Destination, err)
-		}
-
-		functionName := parsedMapping.spec.Function
-		if functionName == "" {
-			functionName = defaultFunctionName(parsedMapping.sourceSpec.TypeExpr, parsedMapping.destSpec.TypeExpr)
-		}
-		if !isValidIdentifier(functionName) {
-			return nil, fmt.Errorf("invalid function name %q", functionName)
-		}
-
-		generator.resolvedMapping = append(generator.resolvedMapping, resolvedMapping{
-			spec:        parsedMapping.spec,
-			source:      sourceType,
-			destination: destinationType,
-			function:    functionName,
-		})
-	}
-
-	functionSet := map[string]struct{}{}
-	for _, mapping := range generator.resolvedMapping {
-		if _, exists := functionSet[mapping.function]; exists {
-			return nil, fmt.Errorf("duplicate function name %q", mapping.function)
-		}
-		functionSet[mapping.function] = struct{}{}
+		config:      config,
+		packageName: pkg.Name,
+		packagePath: pkg.PkgPath,
+		imports:     newImportRegistry(pkg.Name, pkg.PkgPath),
+		methods:     methods,
+		helpers:     map[string]*helperDefinition{},
 	}
 
 	return generator, nil
 }
 
 func (g *codeGenerator) build() ([]byte, error) {
-	for index := range g.resolvedMapping {
-		helperName, err := g.ensureHelper(g.resolvedMapping[index].source.typ, g.resolvedMapping[index].destination.typ)
+	for index := range g.methods {
+		helperName, err := g.ensureHelper(g.methods[index].source, g.methods[index].destination)
 		if err != nil {
 			return nil, err
 		}
-		g.resolvedMapping[index].helper = helperName
+		g.methods[index].helper = helperName
 	}
 
 	helperWriter := &codeWriter{}
@@ -247,13 +169,30 @@ func (g *codeGenerator) build() ([]byte, error) {
 	}
 
 	wrapperWriter := &codeWriter{}
-	for _, mapping := range g.resolvedMapping {
-		g.emitWrapper(wrapperWriter, mapping)
+	wrapperWriter.linef("type %sImpl struct{}", g.config.InterfaceName)
+	wrapperWriter.line("")
+	wrapperWriter.linef("func New%s() %s {", g.config.InterfaceName, g.config.InterfaceName)
+	wrapperWriter.indent++
+	wrapperWriter.linef("return &%sImpl{}", g.config.InterfaceName)
+	wrapperWriter.indent--
+	wrapperWriter.line("}")
+	wrapperWriter.line("")
+
+	for _, method := range g.methods {
+		sourceType := g.renderType(method.source)
+		destinationType := g.renderType(method.destination)
+
+		wrapperWriter.linef("func (m *%sImpl) %s(in %s) %s {", g.config.InterfaceName, method.methodName, sourceType, destinationType)
+		wrapperWriter.indent++
+		wrapperWriter.linef("return %s(in)", method.helper)
+		wrapperWriter.indent--
+		wrapperWriter.line("}")
+		wrapperWriter.line("")
 	}
 
 	finalWriter := &codeWriter{}
 	finalWriter.line("// Code generated by km. DO NOT EDIT.")
-	finalWriter.linef("package %s", g.config.PackageName)
+	finalWriter.linef("package %s", g.packageName)
 	finalWriter.line("")
 
 	imports := g.imports.declarations()
@@ -281,19 +220,6 @@ func (g *codeGenerator) build() ([]byte, error) {
 
 	return formatted, nil
 }
-
-func (g *codeGenerator) emitWrapper(writer *codeWriter, mapping resolvedMapping) {
-	sourceType := g.renderType(mapping.source.typ)
-	destinationType := g.renderType(mapping.destination.typ)
-
-	writer.linef("func %s(in %s) %s {", mapping.function, sourceType, destinationType)
-	writer.indent++
-	writer.linef("return %s(in)", mapping.helper)
-	writer.indent--
-	writer.line("}")
-	writer.line("")
-}
-
 func (g *codeGenerator) ensureHelper(source types.Type, destination types.Type) (string, error) {
 	if hasUnboundTypeParam(source) {
 		return "", fmt.Errorf("source type %s has unbound type parameters", typeKey(source))
@@ -609,139 +535,6 @@ func findExportedFieldByName(structType *types.Struct, name string) (*types.Var,
 	}
 
 	return nil, false
-}
-
-func parseTypeSpec(raw string) (parsedTypeSpec, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return parsedTypeSpec{}, fmt.Errorf("empty type")
-	}
-
-	bracketDepth := 0
-	for index := len(trimmed) - 1; index >= 0; index-- {
-		switch trimmed[index] {
-		case ']':
-			bracketDepth++
-		case '[':
-			bracketDepth--
-		case '.':
-			if bracketDepth == 0 {
-				packagePath := strings.TrimSpace(trimmed[:index])
-				typeExpr := strings.TrimSpace(trimmed[index+1:])
-				if packagePath == "" || typeExpr == "" {
-					return parsedTypeSpec{}, fmt.Errorf("type must be in the form import/path.Type")
-				}
-				return parsedTypeSpec{PackagePath: packagePath, TypeExpr: typeExpr}, nil
-			}
-		}
-	}
-
-	return parsedTypeSpec{}, fmt.Errorf("type must be in the form import/path.Type")
-}
-
-func loadPackages(workingDirectory string, packagePaths []string) (map[string]*packages.Package, error) {
-	config := &packages.Config{
-		Mode: packages.NeedName |
-			packages.NeedTypes |
-			packages.NeedTypesInfo |
-			packages.NeedImports |
-			packages.NeedDeps |
-			packages.NeedSyntax |
-			packages.NeedCompiledGoFiles |
-			packages.NeedFiles,
-		Dir: workingDirectory,
-	}
-
-	loaded, err := packages.Load(config, packagePaths...)
-	if err != nil {
-		return nil, fmt.Errorf("load packages: %w", err)
-	}
-
-	byPath := map[string]*packages.Package{}
-	for _, pkg := range loaded {
-		if len(pkg.Errors) > 0 {
-			messages := make([]string, 0, len(pkg.Errors))
-			for _, packageError := range pkg.Errors {
-				messages = append(messages, packageError.Msg)
-			}
-			return nil, fmt.Errorf("package %s has errors: %s", pkg.PkgPath, strings.Join(messages, "; "))
-		}
-		byPath[pkg.PkgPath] = pkg
-	}
-
-	for _, packagePath := range packagePaths {
-		if _, exists := byPath[packagePath]; !exists {
-			return nil, fmt.Errorf("package %s was not loaded", packagePath)
-		}
-	}
-
-	return byPath, nil
-}
-
-func resolveType(loadedPackages map[string]*packages.Package, spec parsedTypeSpec) (resolvedType, error) {
-	pkg, exists := loadedPackages[spec.PackagePath]
-	if !exists {
-		return resolvedType{}, fmt.Errorf("package %s not loaded", spec.PackagePath)
-	}
-
-	valueAndType, err := types.Eval(pkg.Fset, pkg.Types, token.NoPos, spec.TypeExpr)
-	if err != nil {
-		return resolvedType{}, fmt.Errorf("evaluate type expression %q in %s: %w", spec.TypeExpr, spec.PackagePath, err)
-	}
-	if valueAndType.Type == nil {
-		return resolvedType{}, fmt.Errorf("expression %q did not resolve to a type", spec.TypeExpr)
-	}
-	if hasUnboundTypeParam(valueAndType.Type) {
-		return resolvedType{}, fmt.Errorf("type %q has unbound type parameters; use a concrete instantiation", spec.TypeExpr)
-	}
-
-	return resolvedType{
-		parsed: spec,
-		typ:    valueAndType.Type,
-	}, nil
-}
-
-func defaultFunctionName(sourceTypeExpression string, destinationTypeExpression string) string {
-	sourceName := identifierFromTypeExpression(sourceTypeExpression)
-	destinationName := identifierFromTypeExpression(destinationTypeExpression)
-	name := sourceName + "To" + destinationName
-	if !isValidIdentifier(name) {
-		return "MapGenerated"
-	}
-	return name
-}
-
-func identifierFromTypeExpression(expression string) string {
-	base := strings.TrimSpace(expression)
-	if index := strings.Index(base, "["); index >= 0 {
-		base = base[:index]
-	}
-
-	var builder strings.Builder
-	capitalizeNext := true
-	for _, runeValue := range base {
-		if unicode.IsLetter(runeValue) || unicode.IsDigit(runeValue) {
-			if capitalizeNext {
-				builder.WriteRune(unicode.ToUpper(runeValue))
-				capitalizeNext = false
-			} else {
-				builder.WriteRune(runeValue)
-			}
-			continue
-		}
-		capitalizeNext = true
-	}
-
-	result := builder.String()
-	if result == "" {
-		return "Type"
-	}
-
-	if first := []rune(result)[0]; !unicode.IsLetter(first) && first != '_' {
-		return "T" + result
-	}
-
-	return result
 }
 
 func hasUnboundTypeParam(typ types.Type) bool {

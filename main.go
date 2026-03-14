@@ -4,65 +4,31 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
-type mappingFlag []string
-
-func (m *mappingFlag) String() string {
-	if m == nil {
-		return ""
-	}
-
-	return fmt.Sprintf("%v", []string(*m))
-}
-
-func (m *mappingFlag) Set(value string) error {
-	*m = append(*m, value)
-	return nil
-}
-
 func main() {
-	var mappings mappingFlag
+	var typeName string
 	var outputPath string
-	var packageName string
-	var packagePath string
 	var workingDirectory string
 
-	flag.Var(&mappings, "mapping", "mapping rule in the form source=destination[#FunctionName]")
-	flag.StringVar(&outputPath, "output", "", "output file path for generated mappers")
-	flag.StringVar(&packageName, "package", "", "package name for generated file")
-	flag.StringVar(&packagePath, "package-path", "", "import path of the generated package")
-	flag.StringVar(&workingDirectory, "workdir", ".", "working directory used for package loading")
+	flag.StringVar(&typeName, "type", "", "Name of the interface type to generate mapper for")
+	flag.StringVar(&outputPath, "output", "", "Output file path (default: km_{type}_gen.go)")
+	flag.StringVar(&workingDirectory, "workdir", ".", "working directory")
 	flag.Parse()
 
-	if len(mappings) == 0 {
-		fail("at least one -mapping must be provided")
-	}
-	if outputPath == "" {
-		fail("-output is required")
-	}
-	if packageName == "" {
-		fail("-package is required")
-	}
-	if packagePath == "" {
-		fail("-package-path is required")
+	if typeName == "" {
+		fail("-type is required")
 	}
 
-	specs := make([]MappingSpec, 0, len(mappings))
-	for _, raw := range mappings {
-		spec, err := ParseMappingSpec(raw)
-		if err != nil {
-			fail(err.Error())
-		}
-		specs = append(specs, spec)
+	if outputPath == "" {
+		outputPath = fmt.Sprintf("km_%s_gen.go", strings.ToLower(typeName))
 	}
 
 	config := GeneratorConfig{
-		WorkingDir:  workingDirectory,
-		OutputFile:  outputPath,
-		PackageName: packageName,
-		PackagePath: packagePath,
-		Mappings:    specs,
+		WorkingDir:    workingDirectory,
+		OutputFile:    outputPath,
+		InterfaceName: typeName,
 	}
 
 	if err := Generate(config); err != nil {
