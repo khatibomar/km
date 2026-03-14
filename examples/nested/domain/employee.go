@@ -5,10 +5,12 @@ type Address struct {
 	City    string
 	ZipCode int
 }
+
 type Contact struct {
 	Type  string
 	Value string
 }
+
 type Employee struct {
 	ID        int
 	FirstName string
