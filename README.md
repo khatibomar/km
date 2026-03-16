@@ -1,4 +1,4 @@
-# KM (Khatibomar Mapper)
+# KM (Kanna Mapper)
 
 A highly robust **Interface-Driven Compile-Time Code Generator** for deep, nested, and generic Go struct mapping.
 
